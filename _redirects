@@ -1,0 +1,2 @@
+/score /.netlify/functions/score 200
+/leaderboard /.netlify/functions/leaderboard 200

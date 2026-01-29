@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>다이빙 게임</title>
+  <meta name="description" content="기업 박람회 방문객을 위한 모바일 웹 다이빙 게임">
+
+  <meta property="og:title" content="다이빙 게임">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="">
+  <meta property="og:image" content="">
+  <meta property="og:image:alt" content="다이빙 게임 썸네일">
+
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.png">
+
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#0b1b2b">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+  <!-- 앱 루트 컨테이너 -->
+  <main id="app" class="app">
+    <!-- 시작/입력 화면 -->
+    <section id="screen-intro" class="screen is-active" aria-labelledby="intro-title">
+      <div class="panel">
+        <h1 id="intro-title" class="title">다이빙 게임</h1>
+        <p class="subtitle">1분 안에 최심 기록에 도전하세요.</p>
+
+        <form id="player-form" class="form">
+          <label class="field">
+            <span class="field-label">이름</span>
+            <input id="player-name" name="name" type="text" autocomplete="name" maxlength="20" required>
+          </label>
+          <label class="field">
+            <span class="field-label">연락처</span>
+            <input id="player-phone" name="phone" type="tel" autocomplete="tel" maxlength="20" placeholder="01012345678" required>
+          </label>
+          <label class="consent">
+            <input id="player-consent" type="checkbox" required>
+            <span>개인정보 수집 및 이용에 동의합니다.</span>
+          </label>
+          <p class="consent-desc">경품 확인 목적이며, 행사 종료 후 삭제됩니다.</p>
+
+          <button id="btn-start" class="btn primary" type="submit">게임 시작</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 캐릭터 선택 화면 -->
+    <section id="screen-character" class="screen" aria-labelledby="character-title">
+      <div class="panel">
+        <h2 id="character-title" class="title">캐릭터 선택</h2>
+        <p class="subtitle">롱핀은 빠르지만 어렵고, 숏핀은 느리지만 안정적입니다.</p>
+
+        <div class="card-grid">
+          <button class="card" type="button" data-character="longfin" aria-pressed="false">
+            <h3>롱핀</h3>
+            <p>속도 빠름 / 고득점 가능</p>
+          </button>
+          <button class="card" type="button" data-character="shortfin" aria-pressed="false">
+            <h3>숏핀</h3>
+            <p>속도 느림 / 안정적</p>
+          </button>
+        </div>
+
+        <div class="actions">
+          <button id="btn-to-intro" class="btn ghost" type="button">이전</button>
+          <button id="btn-to-game" class="btn primary" type="button" disabled>게임 시작</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 게임 플레이 화면 -->
+    <section id="screen-game" class="screen" aria-labelledby="game-title">
+      <div class="hud">
+        <div class="hud-item">
+          <span class="hud-label">수심</span>
+          <span id="hud-depth" class="hud-value">0.0m</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">캐릭터</span>
+          <span id="hud-character" class="hud-value">-</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">조작</span>
+          <span class="hud-value">좌/우</span>
+        </div>
+      </div>
+
+      <div class="game-area">
+        <canvas id="game-canvas" width="360" height="640" aria-label="게임 캔버스"></canvas>
+        <div class="touch-controls" aria-hidden="true">
+          <button id="btn-left" class="btn control" type="button">◀</button>
+          <button id="btn-right" class="btn control" type="button">▶</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 결과/랭킹 화면 -->
+    <section id="screen-result" class="screen" aria-labelledby="result-title">
+      <div class="panel">
+        <h2 id="result-title" class="title">게임 종료</h2>
+        <p class="subtitle">최종 수심</p>
+        <div id="final-depth" class="final-depth">0.0m</div>
+
+        <div class="leaderboard">
+          <div class="leaderboard-header">
+            <h3>랭킹 TOP 10</h3>
+            <span id="leaderboard-status" class="status">불러오는 중...</span>
+          </div>
+          <ol id="leaderboard-list" class="leaderboard-list">
+            <!-- JS로 랭킹 목록 렌더링 -->
+          </ol>
+        </div>
+
+        <div class="actions">
+          <button id="btn-retry" class="btn primary" type="button">다시하기</button>
+          <button id="btn-home" class="btn ghost" type="button">처음으로</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 알림 토스트 -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <script src="js/app.js" defer></script>
+</body>
+
+</html>
