@@ -38,6 +38,7 @@ html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
 }
 
 body {
@@ -54,9 +55,12 @@ input {
 
 /* ===== 앱 레이아웃 ===== */
 .app {
-  min-height: 100vh;
+  /* 모바일에서 스크롤 없이 전체 화면에 맞추기 */
+  min-height: 100dvh;
+  height: 100dvh;
   padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   justify-content: center;
 }
@@ -64,6 +68,8 @@ input {
 .screen {
   display: none;
   width: 100%;
+  flex: 1;
+  min-height: 0;
   align-items: center;
   justify-content: center;
 }
@@ -223,6 +229,7 @@ input:focus {
   align-items: stretch;
   flex-direction: column;
   gap: 12px;
+  justify-content: flex-start;
 }
 
 .hud {
@@ -253,15 +260,23 @@ input:focus {
 
 .game-area {
   position: relative;
+  /* 남는 공간을 모두 사용해 캔버스가 뷰포트 안에 들어오도록 */
   flex: 1;
+  min-height: 0;
+  width: 100%;
+  /* 고정된 터치 컨트롤 영역 확보 */
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 #game-canvas {
+  /* 가로 폭을 꽉 채우되 세로는 화면 안에서 비율 유지 */
   width: 100%;
-  max-width: 520px;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 9 / 16;
   border: 2px solid var(--border);
   border-radius: 16px;
@@ -271,7 +286,8 @@ input:focus {
 }
 
 .touch-controls {
-  position: absolute;
+  /* 화면 하단에 고정된 방향키 배치 */
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 0;

@@ -68,6 +68,8 @@
     queueSending: false,
     // 캐릭터 방향(1: 오른쪽, -1: 왼쪽)
     facing: 1,
+    // 캐릭터 이동 여부
+    moving: false,
   };
 
   // Input flags for continuous movement
@@ -142,6 +144,60 @@
   // Random helper for obstacle spawning
   function randomInRange(min, max) {
     return Math.random() * (max - min) + min;
+  }
+
+  // 화면 크기에 따라 버블 개수 산출
+  function getBubbleCount(size) {
+    const density = Math.round((size.width * size.height) / 12000);
+    return clamp(density, 14, 32);
+  }
+
+  // 버블 오브젝트 생성(바닷속 느낌)
+  function createBubble(size) {
+    const radius = randomInRange(size.width * 0.006, size.width * 0.02);
+    return {
+      x: randomInRange(0, size.width),
+      y: randomInRange(0, size.height),
+      radius,
+      speed: randomInRange(size.height * 0.03, size.height * 0.08),
+      drift: randomInRange(-size.width * 0.02, size.width * 0.02),
+      alpha: randomInRange(0.15, 0.35),
+    };
+  }
+
+  // 버블 초기화
+  function initBubbles(size) {
+    const count = getBubbleCount(size);
+    const bubbles = [];
+    for (let i = 0; i < count; i += 1) {
+      bubbles.push(createBubble(size));
+    }
+    return bubbles;
+  }
+
+  // 버블 위치 업데이트(위로 상승)
+  function updateBubbles(bubbles, size, delta) {
+    bubbles.forEach((bubble) => {
+      bubble.y -= bubble.speed * delta;
+      bubble.x += bubble.drift * delta;
+
+      if (bubble.x < -bubble.radius) {
+        bubble.x = size.width + bubble.radius;
+      }
+      if (bubble.x > size.width + bubble.radius) {
+        bubble.x = -bubble.radius;
+      }
+
+      if (bubble.y + bubble.radius < -20) {
+        const reset = createBubble(size);
+        bubble.x = reset.x;
+        bubble.y = size.height + randomInRange(20, size.height * 0.3);
+        bubble.radius = reset.radius;
+        bubble.speed = reset.speed;
+        bubble.drift = reset.drift;
+        bubble.alpha = reset.alpha;
+      }
+    });
   }
 
   // 선형 보간 유틸리티
@@ -340,6 +396,8 @@
     game.player.x = clamp(game.player.x, 0, game.size.width - game.player.width);
     game.startScreenY = game.size.height * CONFIG.gameplay.startScreenRatio;
     game.targetScreenY = game.size.height * CONFIG.gameplay.targetScreenRatio;
+    // 리사이즈에 맞춰 버블을 다시 구성
+    game.bubbles = initBubbles(game.size);
 
     // 리사이즈 시 현재 위치를 화면 좌표로 동기화
     if (game.running) {
@@ -357,7 +415,7 @@
   }
 
   // Draw background layers for underwater feeling
-  function drawBackground(ctx, size, depth) {
+  function drawBackground(ctx, size, bubbles) {
     // 밝고 푸른 바다 톤으로 배경 그라디언트 조정
     const gradient = ctx.createLinearGradient(0, 0, 0, size.height);
     gradient.addColorStop(0, "#0f3f73");
@@ -367,31 +425,35 @@
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size.width, size.height);
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    const stripeGap = 36;
-    // 하강감을 위해 배경 라인이 위로 흐르도록 오프셋 반전
-    const offset = (stripeGap - (depth * 6) % stripeGap) % stripeGap;
-
-    for (let y = -stripeGap; y < size.height + stripeGap; y += stripeGap) {
+    // 바닷속 기포(버블) 렌더링
+    bubbles.forEach((bubble) => {
+      ctx.fillStyle = `rgba(235, 250, 255, ${bubble.alpha})`;
       ctx.beginPath();
-      ctx.moveTo(0, y + offset);
-      ctx.lineTo(size.width, y + offset);
-      ctx.stroke();
-    }
+      ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
   }
 
-  // 다이버 캐릭터(롱핀/숏핀)를 픽셀 느낌으로 렌더링
-  function drawPlayer(ctx, player, character, facing) {
+  // 다이버 캐릭터(롱핀/숏핀)를 고해상도 디테일로 렌더링(하강 방향)
+  function drawPlayer(ctx, player, character, facing, moving, time) {
     const x = player.x;
     const y = player.y;
     const w = player.width;
     const h = player.height;
 
-    const suitColor = "#0f2d44";
-    const helmetColor = "#1b364f";
-    const tankColor = "#0b1b2b";
-    const visorColor = "#7dd6e8";
+    const suitDark = "#0f2d44";
+    const suitLight = "#1f4f6a";
+    const accent = "#1e6f78";
+    const helmet = "#2b4965";
+    const tank = "#0b1b2b";
+    const visor = "#8fe7ff";
+    const visorHighlight = "rgba(255, 255, 255, 0.45)";
+    const glove = "#24475f";
+    const boot = "#143449";
+    const finDark = character === "longfin" ? "#c58f2c" : "#4fb3c7";
+    const outline = "rgba(7, 18, 28, 0.6)";
     const finColor = character === "longfin" ? "#f2c14e" : "#6fd0e8";
+    const belt = "#3a5b70";
 
     // 좌우 이동 방향에 따라 캐릭터를 좌우 반전
     ctx.save();
@@ -403,30 +465,114 @@
       drawX = -w * 0.5;
     }
 
-    // 상단이 머리, 하단이 핀 구조로 하강 방향을 강조
-    ctx.fillStyle = helmetColor;
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.08, w * 0.32, h * 0.22);
+    // === 하강 방향(아래)으로 바라보는 잠수부 ===
+    const lineWidth = Math.max(1, w * 0.05);
+    ctx.lineWidth = lineWidth;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
 
-    ctx.fillStyle = visorColor;
-    ctx.fillRect(drawX + w * 0.4, y + h * 0.12, w * 0.2, h * 0.12);
+    // 애니메이션 파라미터(손/핀 가벼운 흔들림)
+    const finSwing = Math.sin(time * 9) * h * 0.02;
+    const armSwing = Math.sin(time * 6) * h * 0.012;
 
-    ctx.fillStyle = suitColor;
-    ctx.fillRect(drawX + w * 0.32, y + h * 0.28, w * 0.36, h * 0.42);
+    // 진행 방향을 명확하게 보여주는 라이트 콘
+    const beamStrength = moving ? 0.22 : 0.14;
+    ctx.fillStyle = `rgba(160, 230, 255, ${beamStrength})`;
+    ctx.beginPath();
+    ctx.moveTo(drawX + w * 0.7, y + h * 0.78);
+    ctx.lineTo(drawX + w * 1.6, y + h * 0.62);
+    ctx.lineTo(drawX + w * 1.6, y + h * 0.94);
+    ctx.closePath();
+    ctx.fill();
 
-    // 산소 탱크 표현
-    ctx.fillStyle = tankColor;
-    ctx.fillRect(drawX + w * 0.18, y + h * 0.3, w * 0.12, h * 0.42);
-
-    // 핀 길이로 롱핀/숏핀 구분
-    const finHeight = character === "longfin" ? h * 0.28 : h * 0.16;
-    const finY = y + h * 0.72;
+    // 핀 길이로 롱핀/숏핀 구분 (상단 배치)
+    const finHeight = character === "longfin" ? h * 0.22 : h * 0.14;
+    const finY = y + h * 0.02 + finSwing;
     ctx.fillStyle = finColor;
-    ctx.fillRect(drawX + w * 0.26, finY, w * 0.16, finHeight);
-    ctx.fillRect(drawX + w * 0.58, finY, w * 0.16, finHeight);
+    ctx.fillRect(drawX + w * 0.18, finY, w * 0.2, finHeight);
+    ctx.fillRect(drawX + w * 0.62, finY, w * 0.2, finHeight);
+    // 핀 스트랩 디테일
+    ctx.fillStyle = "#0f2d44";
+    ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.52, w * 0.16, finHeight * 0.12);
+    ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.52, w * 0.16, finHeight * 0.12);
+    // 핀 패턴(롱핀은 줄무늬, 숏핀은 끝단 강조)
+    ctx.fillStyle = finDark;
+    if (character === "longfin") {
+      ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.18, w * 0.16, finHeight * 0.08);
+      ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.18, w * 0.16, finHeight * 0.08);
+      ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.72, w * 0.16, finHeight * 0.08);
+      ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.72, w * 0.16, finHeight * 0.08);
+    } else {
+      ctx.fillRect(drawX + w * 0.18, finY + finHeight * 0.86, w * 0.2, finHeight * 0.12);
+      ctx.fillRect(drawX + w * 0.62, finY + finHeight * 0.86, w * 0.2, finHeight * 0.12);
+    }
+
+    // 다리(핀과 몸통 연결)
+    ctx.fillStyle = suitDark;
+    ctx.fillRect(drawX + w * 0.24, y + h * 0.22 + finSwing * 0.4, w * 0.16, h * 0.18);
+    ctx.fillRect(drawX + w * 0.6, y + h * 0.22 + finSwing * 0.4, w * 0.16, h * 0.18);
+
+    // 몸통
+    ctx.fillStyle = suitDark;
+    ctx.fillRect(drawX + w * 0.28, y + h * 0.36, w * 0.44, h * 0.28);
+
+    // 팔(양측)
+    ctx.fillStyle = suitLight;
+    ctx.fillRect(drawX + w * 0.18, y + h * 0.4 + armSwing, w * 0.1, h * 0.18);
+    ctx.fillRect(drawX + w * 0.72, y + h * 0.4 - armSwing, w * 0.1, h * 0.18);
+    // 장갑 디테일
+    ctx.fillStyle = glove;
+    ctx.fillRect(drawX + w * 0.18, y + h * 0.55 + armSwing, w * 0.1, h * 0.06);
+    ctx.fillRect(drawX + w * 0.72, y + h * 0.55 - armSwing, w * 0.1, h * 0.06);
+
+    // 손목 컴퓨터(방향 식별 포인트)
+    ctx.fillStyle = "#67d9ff";
+    ctx.fillRect(drawX + w * 0.74, y + h * 0.48 - armSwing * 0.2, w * 0.06, h * 0.06);
+
+    // 산소 탱크(등)
+    ctx.fillStyle = tank;
+    ctx.fillRect(drawX + w * 0.38, y + h * 0.28, w * 0.24, h * 0.32);
+    ctx.fillRect(drawX + w * 0.42, y + h * 0.26, w * 0.16, h * 0.06);
+
+    // 벨트/스트랩
+    ctx.fillStyle = belt;
+    ctx.fillRect(drawX + w * 0.28, y + h * 0.52, w * 0.44, h * 0.05);
+    // 추가 스트랩
+    ctx.fillRect(drawX + w * 0.34, y + h * 0.4, w * 0.32, h * 0.04);
+
+    // 헬멧(하단에 배치되어 아래를 바라보는 느낌)
+    ctx.fillStyle = helmet;
+    ctx.fillRect(drawX + w * 0.3, y + h * 0.66, w * 0.4, h * 0.22);
+
+    // 바이저(유리)
+    ctx.fillStyle = visor;
+    ctx.fillRect(drawX + w * 0.38, y + h * 0.72, w * 0.24, h * 0.12);
+    // 바이저 하이라이트
+    ctx.fillStyle = visorHighlight;
+    ctx.fillRect(drawX + w * 0.4, y + h * 0.74, w * 0.08, h * 0.05);
+
+    // 레귤레이터 포인트
+    ctx.fillStyle = accent;
+    ctx.fillRect(drawX + w * 0.44, y + h * 0.85, w * 0.12, h * 0.05);
+    // 호스 디테일(방향 강조)
+    ctx.strokeStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(drawX + w * 0.5, y + h * 0.88);
+    ctx.lineTo(drawX + w * 0.72, y + h * 0.7);
+    ctx.stroke();
+
+    // 부츠/발끝 강조
+    ctx.fillStyle = boot;
+    ctx.fillRect(drawX + w * 0.24, y + h * 0.2, w * 0.16, h * 0.04);
+    ctx.fillRect(drawX + w * 0.6, y + h * 0.2, w * 0.16, h * 0.04);
 
     // 슈트 하이라이트 라인
-    ctx.fillStyle = "#1e6f78";
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.46, w * 0.32, h * 0.05);
+    ctx.fillStyle = accent;
+    ctx.fillRect(drawX + w * 0.32, y + h * 0.44, w * 0.36, h * 0.04);
+
+    // 캐릭터 외곽선으로 선명도 강화
+    ctx.strokeStyle = outline;
+    ctx.strokeRect(drawX + w * 0.28, y + h * 0.36, w * 0.44, h * 0.52);
     ctx.restore();
   }
 
@@ -588,9 +734,11 @@
       height: 54,
     },
     obstacles: [],
+    bubbles: [],
     running: false,
     lastFrame: 0,
     depth: 0,
+    time: 0,
     // 카메라/스크롤 상태
     cameraY: 0,
     startScreenY: CONFIG.canvas.baseHeight * CONFIG.gameplay.startScreenRatio,
@@ -604,7 +752,10 @@
     start(character) {
       this.running = true;
       this.obstacles = [];
+      // 게임 시작 시 버블 배경 초기화
+      this.bubbles = initBubbles(this.size);
       this.depth = 0;
+      this.time = 0;
       this.lastFrame = performance.now();
       this.spawnTimer = 0;
       this.spawnInterval = getSpawnInterval(this.depth);
@@ -620,6 +771,7 @@
       this.player.worldY = this.startScreenY;
       this.player.y = this.startScreenY;
       state.facing = 1;
+      state.moving = false;
 
       this.loop();
     },
@@ -673,6 +825,8 @@
     update(delta) {
       // 수심 수치 증가
       this.depth += this.depthRate * delta;
+      // 애니메이션 시간 누적
+      this.time += delta;
 
       // 좌/우 이동 처리
       const direction = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -680,8 +834,12 @@
         // 마지막 이동 방향을 기억해 캐릭터 방향을 고정
         state.facing = direction > 0 ? 1 : -1;
       }
+      state.moving = direction !== 0;
       this.player.x += direction * CONFIG.gameplay.playerSpeed * delta;
       this.player.x = clamp(this.player.x, 0, this.size.width - this.player.width);
+
+      // 배경 버블 이동 업데이트
+      updateBubbles(this.bubbles, this.size, delta);
 
       // 캐릭터 자동 하강 + 중간 지점 고정
       this.player.worldY += this.descentSpeed * delta;
@@ -730,9 +888,9 @@
 
     // Render background, player, and obstacles
     render() {
-      drawBackground(this.ctx, this.size, this.depth);
+      drawBackground(this.ctx, this.size, this.bubbles);
       drawObstacles(this.ctx, this.obstacles, this.cameraY, this.size);
-      drawPlayer(this.ctx, this.player, state.character, state.facing);
+      drawPlayer(this.ctx, this.player, state.character, state.facing, state.moving, this.time);
     },
 
     // Main loop driven by requestAnimationFrame
@@ -860,12 +1018,13 @@
     game.start(state.character);
   }
 
-  // Reset inputs and return to intro screen
+    // Reset inputs and return to intro screen
   function resetToIntro() {
     DOM.form.reset();
     state.player = { name: "", phone: "" };
     state.character = null;
     state.facing = 1;
+    state.moving = false;
     DOM.btnToGame.disabled = true;
     // Reset character selection UI state
     DOM.characterCards.forEach((card) => {
