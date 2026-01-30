@@ -42,13 +42,20 @@
     },
     gameplay: {
       // 수심 진행 속도(미터/초) - 전체 속도 상향
-      longfinDepthRate: 10.0,
-      shortfinDepthRate: 5.0,
-      // 수심 1m당 화면 이동 픽셀 비율
-      pixelsPerMeter: 28,
+      // 수심 수치는 1분당 약 30m 수준으로 더 느리게 조정
+      longfinDepthRate: 0.5,
+      shortfinDepthRate: 0.4,
+      // 느려진 수심 수치와 별개로 화면 하강 속도는 유지
+      pixelsPerMeter: 420,
       playerSpeed: 240,
-      spawnMin: 0.65,
-      spawnMax: 1.1,
+      // 장애물 스폰 기본 간격(초) - 난이도 상향
+      spawnMin: 0.5,
+      spawnMax: 0.85,
+      // 난이도 상승을 더 이른 시간에 공격적으로 체감시키기 위한 보정값
+      difficultyDepthScale: 110,
+      difficultyTimeScale: 18,
+      difficultyDepthWeight: 0.75,
+      difficultyTimeWeight: 0.25,
       // 캐릭터 시작/목표 위치(화면 비율)
       startScreenRatio: 0.18,
       targetScreenRatio: 0.35,
@@ -216,11 +223,17 @@
     return start + (end - start) * t;
   }
 
-  // 수심에 따라 장애물 스폰 간격을 줄여 난이도 상승
-  function getSpawnInterval(depth) {
-    const normalizedDepth = clamp(depth / 200, 0, 1);
-    const minInterval = lerp(CONFIG.gameplay.spawnMin, CONFIG.gameplay.spawnMin * 0.5, normalizedDepth);
-    const maxInterval = lerp(CONFIG.gameplay.spawnMax, CONFIG.gameplay.spawnMax * 0.6, normalizedDepth);
+  // 수심과 경과 시간을 함께 반영해 난이도를 더 빠르게 상승
+  function getSpawnInterval(depth, time) {
+    // 초반부터 난이도 상승이 느껴지도록 곡선을 완화(0.7 제곱)
+    const depthFactor = Math.pow(clamp(depth / CONFIG.gameplay.difficultyDepthScale, 0, 1), 0.7);
+    const timeFactor = Math.pow(clamp(time / CONFIG.gameplay.difficultyTimeScale, 0, 1), 0.7);
+    const difficulty =
+      depthFactor * CONFIG.gameplay.difficultyDepthWeight +
+      timeFactor * CONFIG.gameplay.difficultyTimeWeight;
+    const normalizedDifficulty = clamp(difficulty, 0, 1);
+    const minInterval = lerp(CONFIG.gameplay.spawnMin, CONFIG.gameplay.spawnMin * 0.5, normalizedDifficulty);
+    const maxInterval = lerp(CONFIG.gameplay.spawnMax, CONFIG.gameplay.spawnMax * 0.6, normalizedDifficulty);
     const safeMin = Math.min(minInterval, maxInterval);
     const safeMax = Math.max(minInterval, maxInterval);
     return randomInRange(safeMin, safeMax);
@@ -919,7 +932,7 @@
       this.time = 0;
       this.lastFrame = performance.now();
       this.spawnTimer = 0;
-      this.spawnInterval = getSpawnInterval(this.depth);
+      this.spawnInterval = getSpawnInterval(this.depth, this.time);
       // 캐릭터 선택에 따른 하강/수심 속도 적용
       this.depthRate = character === "longfin" ? CONFIG.gameplay.longfinDepthRate : CONFIG.gameplay.shortfinDepthRate;
       this.descentSpeed = this.depthRate * CONFIG.gameplay.pixelsPerMeter;
@@ -1019,7 +1032,7 @@
       if (this.spawnTimer >= this.spawnInterval) {
         this.spawnTimer = 0;
         // 수심이 깊어질수록 스폰 간격을 줄여 난이도 상승
-        this.spawnInterval = getSpawnInterval(this.depth);
+        this.spawnInterval = getSpawnInterval(this.depth, this.time);
         this.spawnObstacle();
       }
 
