@@ -98,6 +98,17 @@
     Object.entries(DOM.screens).forEach(([key, section]) => {
       section.classList.toggle("is-active", key === screenId);
     });
+    // 캐릭터 선택 화면 노출 시 미리보기 캔버스 동기화
+    if (screenId === "character") {
+      // 화면 전환 직후 레이아웃이 확정된 뒤 미리보기 애니메이션 시작
+      window.requestAnimationFrame(() => {
+        renderCharacterPreviews(0);
+        startCharacterPreviewAnimation();
+      });
+    } else {
+      // 캐릭터 화면이 아니면 미리보기 애니메이션 중단
+      stopCharacterPreviewAnimation();
+    }
   }
 
   // Clean and bound user name input
@@ -434,36 +445,51 @@
     });
   }
 
-  // 다이버 캐릭터(롱핀/숏핀)를 고해상도 디테일로 렌더링(하강 방향)
+  // 다이버 캐릭터(롱핀/숏핀)를 데이브 더 다이버 감성의 스타일로 렌더링(하강 방향)
   function drawPlayer(ctx, player, character, facing, moving, time) {
     const x = player.x;
     const y = player.y;
     const w = player.width;
     const h = player.height;
 
-    const suitDark = "#0f2d44";
-    const suitLight = "#1f4f6a";
-    const accent = "#1e6f78";
-    const helmet = "#2b4965";
-    const tank = "#0b1b2b";
-    const visor = "#8fe7ff";
-    const visorHighlight = "rgba(255, 255, 255, 0.45)";
-    const glove = "#24475f";
-    const boot = "#143449";
-    const finDark = character === "longfin" ? "#c58f2c" : "#4fb3c7";
-    const outline = "rgba(7, 18, 28, 0.6)";
-    const finColor = character === "longfin" ? "#f2c14e" : "#6fd0e8";
-    const belt = "#3a5b70";
+    // 데이브 더 다이버 느낌의 컬러 팔레트(블루 슈트 + 옐로 마스크 + 오렌지 핀)
+    const suitBase = "#1d3f7a";
+    const suitShade = "#112a52";
+    const suitHighlight = "#2f6fd6";
+    const maskFrame = "#ffd45a";
+    const maskShade = "#f0b83a";
+    const skinTone = "#f3c9a3";
+    const beard = "#3b2b25";
+    const visor = "#7fd9ff";
+    const visorHighlight = "rgba(255, 255, 255, 0.55)";
+    const tankMain = "#ffcc4d";
+    const tankShade = "#e2a93a";
+    const strap = "#1a1a1a";
+    const glove = "#1a1a1a";
+    const boot = "#121820";
+    const hair = "#2a1d18";
+    const finMain = character === "longfin" ? "#f06d2f" : "#e24d3a";
+    const finShade = character === "longfin" ? "#c4511f" : "#c13a2c";
+    const outline = "rgba(6, 12, 20, 0.65)";
+    const hose = "#e14a33";
 
-    // 좌우 이동 방향에 따라 캐릭터를 좌우 반전
+    // 좌우 이동 방향에 따라 캐릭터를 좌우 반전하고 대각 하강 포즈를 만들기 위한 회전 적용
     ctx.save();
-    let drawX = x;
-    if (facing === -1) {
-      // 중심 기준으로 좌우 반전
-      ctx.translate(x + w * 0.5, 0);
-      ctx.scale(-1, 1);
-      drawX = -w * 0.5;
-    }
+    const pivotX = x + w * 0.5;
+    const pivotY = y + h * 0.58;
+    // 이동/정지 상태에 따라 기울기를 다르게 하여 방향성을 강화
+    const tiltMoving = 0.24;
+    const tiltIdle = 0.14;
+    const tiltWave = Math.sin(time * 4.5) * 0.02;
+    const tiltBase = moving ? tiltMoving : tiltIdle;
+    // 좌/우 전환 시 각도가 반대로 보이지 않도록 부호를 보정
+    const tilt = -(tiltBase + tiltWave);
+    ctx.translate(pivotX, pivotY);
+    // 좌우 반전은 회전 결과를 뒤집기 위해 먼저 적용
+    ctx.scale(facing, 1);
+    ctx.rotate(tilt);
+    ctx.translate(-pivotX, -pivotY);
+    const drawX = x;
 
     // === 하강 방향(아래)으로 바라보는 잠수부 ===
     const lineWidth = Math.max(1, w * 0.05);
@@ -471,109 +497,244 @@
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
-    // 애니메이션 파라미터(손/핀 가벼운 흔들림)
+    // 애니메이션 파라미터(핀/팔/다리 수영 동작)
     const finSwing = Math.sin(time * 9) * h * 0.02;
-    const armSwing = Math.sin(time * 6) * h * 0.012;
+    const swimPhase = time * 8.2;
+    const swimIntensity = moving ? 1 : 0.45;
+    const armSwing = Math.cos(swimPhase) * h * 0.04 * swimIntensity;
+    const armReach = Math.sin(swimPhase) * w * 0.07 * swimIntensity;
+    const armOut = Math.abs(armSwing) * 0.6;
+    const legKick = Math.sin(swimPhase) * h * 0.06 * swimIntensity;
+    const legSpread = Math.cos(swimPhase) * w * 0.03 * swimIntensity;
+    const legOut = Math.abs(legKick) * 0.25;
 
-    // 진행 방향을 명확하게 보여주는 라이트 콘
-    const beamStrength = moving ? 0.22 : 0.14;
-    ctx.fillStyle = `rgba(160, 230, 255, ${beamStrength})`;
-    ctx.beginPath();
-    ctx.moveTo(drawX + w * 0.7, y + h * 0.78);
-    ctx.lineTo(drawX + w * 1.6, y + h * 0.62);
-    ctx.lineTo(drawX + w * 1.6, y + h * 0.94);
-    ctx.closePath();
-    ctx.fill();
+    // 헤드라이트 연출은 제거(요청 사항)
 
     // 핀 길이로 롱핀/숏핀 구분 (상단 배치)
-    const finHeight = character === "longfin" ? h * 0.22 : h * 0.14;
-    const finY = y + h * 0.02 + finSwing;
-    ctx.fillStyle = finColor;
-    ctx.fillRect(drawX + w * 0.18, finY, w * 0.2, finHeight);
-    ctx.fillRect(drawX + w * 0.62, finY, w * 0.2, finHeight);
-    // 핀 스트랩 디테일
-    ctx.fillStyle = "#0f2d44";
-    ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.52, w * 0.16, finHeight * 0.12);
-    ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.52, w * 0.16, finHeight * 0.12);
-    // 핀 패턴(롱핀은 줄무늬, 숏핀은 끝단 강조)
-    ctx.fillStyle = finDark;
-    if (character === "longfin") {
-      ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.18, w * 0.16, finHeight * 0.08);
-      ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.18, w * 0.16, finHeight * 0.08);
-      ctx.fillRect(drawX + w * 0.2, finY + finHeight * 0.72, w * 0.16, finHeight * 0.08);
-      ctx.fillRect(drawX + w * 0.64, finY + finHeight * 0.72, w * 0.16, finHeight * 0.08);
-    } else {
-      ctx.fillRect(drawX + w * 0.18, finY + finHeight * 0.86, w * 0.2, finHeight * 0.12);
-      ctx.fillRect(drawX + w * 0.62, finY + finHeight * 0.86, w * 0.2, finHeight * 0.12);
-    }
+    // 롱핀/숏핀 길이 차이를 확실히 구분
+    const finHeight = character === "longfin" ? h * 0.32 : h * 0.1;
+    const finY = y + h * 0.02 + finSwing + legKick * 0.25;
+    const finWidth = w * 0.22;
+    const leftFinX = drawX + w * 0.14 - legSpread * 0.4;
+    const rightFinX = drawX + w * 0.64 + legSpread * 0.4;
 
-    // 다리(핀과 몸통 연결)
-    ctx.fillStyle = suitDark;
-    ctx.fillRect(drawX + w * 0.24, y + h * 0.22 + finSwing * 0.4, w * 0.16, h * 0.18);
-    ctx.fillRect(drawX + w * 0.6, y + h * 0.22 + finSwing * 0.4, w * 0.16, h * 0.18);
+    // 데이브 특유의 통통한 핀 형태를 폴리곤으로 표현
+    ctx.fillStyle = finMain;
+    ctx.beginPath();
+    ctx.moveTo(leftFinX, finY);
+    ctx.lineTo(leftFinX + finWidth, finY);
+    ctx.lineTo(leftFinX + finWidth * 0.82, finY + finHeight);
+    ctx.lineTo(leftFinX + finWidth * 0.18, finY + finHeight);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(rightFinX, finY);
+    ctx.lineTo(rightFinX + finWidth, finY);
+    ctx.lineTo(rightFinX + finWidth * 0.82, finY + finHeight);
+    ctx.lineTo(rightFinX + finWidth * 0.18, finY + finHeight);
+    ctx.closePath();
+    ctx.fill();
+    // 핀 스트랩/톤 분리로 입체감 강조
+    ctx.fillStyle = finShade;
+    ctx.fillRect(leftFinX + finWidth * 0.2, finY + finHeight * 0.18, finWidth * 0.6, finHeight * 0.12);
+    ctx.fillRect(rightFinX + finWidth * 0.2, finY + finHeight * 0.18, finWidth * 0.6, finHeight * 0.12);
 
-    // 몸통
-    ctx.fillStyle = suitDark;
-    ctx.fillRect(drawX + w * 0.28, y + h * 0.36, w * 0.44, h * 0.28);
+    // 다리(핀과 몸통 연결) - 킥 모션을 위해 상/하 분할
+    ctx.fillStyle = suitShade;
+    const leftLegX = drawX + w * 0.24 - legSpread - legOut;
+    const rightLegX = drawX + w * 0.6 + legSpread + legOut;
+    const legY = y + h * 0.22 + finSwing * 0.4;
+    const legW = w * 0.16;
+    const thighH = h * 0.11;
+    const calfH = h * 0.1;
+    // 허벅지
+    ctx.fillRect(leftLegX, legY, legW, thighH);
+    ctx.fillRect(rightLegX, legY, legW, thighH);
+    // 종아리(좌우 교차 킥)
+    ctx.fillRect(leftLegX, legY + thighH + legKick, legW, calfH);
+    ctx.fillRect(rightLegX, legY + thighH - legKick, legW, calfH);
 
-    // 팔(양측)
-    ctx.fillStyle = suitLight;
-    ctx.fillRect(drawX + w * 0.18, y + h * 0.4 + armSwing, w * 0.1, h * 0.18);
-    ctx.fillRect(drawX + w * 0.72, y + h * 0.4 - armSwing, w * 0.1, h * 0.18);
+    // 부츠/발끝 강조 - 킥 방향에 따라 위치 오프셋
+    ctx.fillStyle = boot;
+    ctx.fillRect(leftLegX, legY - h * 0.02 + legKick, legW, h * 0.04);
+    ctx.fillRect(rightLegX, legY - h * 0.02 - legKick, legW, h * 0.04);
+
+    // 산소 탱크(등) - 데이브의 옐로 톤 포인트
+    ctx.fillStyle = tankMain;
+    ctx.fillRect(drawX + w * 0.34, y + h * 0.26, w * 0.3, h * 0.28);
+    ctx.fillStyle = tankShade;
+    ctx.fillRect(drawX + w * 0.34, y + h * 0.26, w * 0.09, h * 0.28);
+    // 탱크 스트랩
+    ctx.fillStyle = strap;
+    ctx.fillRect(drawX + w * 0.34, y + h * 0.44, w * 0.3, h * 0.04);
+
+    // 몸통(통통한 블루 슈트)
+    const torsoX = drawX + w * 0.2;
+    const torsoY = y + h * 0.33;
+    const torsoW = w * 0.6;
+    const torsoH = h * 0.34;
+    ctx.fillStyle = suitBase;
+    ctx.fillRect(torsoX, torsoY, torsoW, torsoH);
+    // 슈트 하이라이트 라인
+    ctx.fillStyle = suitHighlight;
+    ctx.fillRect(torsoX + torsoW * 0.2, torsoY + torsoH * 0.28, torsoW * 0.6, torsoH * 0.08);
+
+    // 팔(양측) - 상완/하완 분리로 수영 스트로크 표현
+    ctx.fillStyle = suitShade;
+    const leftArmX = drawX + w * 0.1 + armReach - armOut;
+    const rightArmX = drawX + w * 0.76 - armReach + armOut;
+    const armY = y + h * 0.4;
+    const armW = w * 0.14;
+    const upperArmH = h * 0.11;
+    const lowerArmH = h * 0.1;
+    // 상완
+    ctx.fillRect(leftArmX, armY + armSwing, armW, upperArmH);
+    ctx.fillRect(rightArmX, armY - armSwing, armW, upperArmH);
+    // 하완(좌우 교차 스트로크)
+    ctx.fillRect(leftArmX, armY + upperArmH + armSwing * 0.6, armW, lowerArmH);
+    ctx.fillRect(rightArmX, armY + upperArmH - armSwing * 0.6, armW, lowerArmH);
     // 장갑 디테일
     ctx.fillStyle = glove;
-    ctx.fillRect(drawX + w * 0.18, y + h * 0.55 + armSwing, w * 0.1, h * 0.06);
-    ctx.fillRect(drawX + w * 0.72, y + h * 0.55 - armSwing, w * 0.1, h * 0.06);
+    ctx.fillRect(leftArmX, armY + upperArmH + lowerArmH + armSwing * 0.4, armW, h * 0.05);
+    ctx.fillRect(rightArmX, armY + upperArmH + lowerArmH - armSwing * 0.4, armW, h * 0.05);
 
-    // 손목 컴퓨터(방향 식별 포인트)
-    ctx.fillStyle = "#67d9ff";
-    ctx.fillRect(drawX + w * 0.74, y + h * 0.48 - armSwing * 0.2, w * 0.06, h * 0.06);
+    // 마스크 스트랩(얼굴 뒤로 감기는 라인)
+    ctx.fillStyle = strap;
+    ctx.fillRect(drawX + w * 0.24, y + h * 0.71, w * 0.52, h * 0.03);
 
-    // 산소 탱크(등)
-    ctx.fillStyle = tank;
-    ctx.fillRect(drawX + w * 0.38, y + h * 0.28, w * 0.24, h * 0.32);
-    ctx.fillRect(drawX + w * 0.42, y + h * 0.26, w * 0.16, h * 0.06);
-
-    // 벨트/스트랩
-    ctx.fillStyle = belt;
-    ctx.fillRect(drawX + w * 0.28, y + h * 0.52, w * 0.44, h * 0.05);
-    // 추가 스트랩
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.4, w * 0.32, h * 0.04);
-
-    // 헬멧(하단에 배치되어 아래를 바라보는 느낌)
-    ctx.fillStyle = helmet;
-    ctx.fillRect(drawX + w * 0.3, y + h * 0.66, w * 0.4, h * 0.22);
-
-    // 바이저(유리)
-    ctx.fillStyle = visor;
-    ctx.fillRect(drawX + w * 0.38, y + h * 0.72, w * 0.24, h * 0.12);
-    // 바이저 하이라이트
-    ctx.fillStyle = visorHighlight;
-    ctx.fillRect(drawX + w * 0.4, y + h * 0.74, w * 0.08, h * 0.05);
-
-    // 레귤레이터 포인트
-    ctx.fillStyle = accent;
-    ctx.fillRect(drawX + w * 0.44, y + h * 0.85, w * 0.12, h * 0.05);
-    // 호스 디테일(방향 강조)
-    ctx.strokeStyle = accent;
+    // 얼굴(데이브 특유의 피부 톤과 턱수염)
+    const faceCX = drawX + w * 0.5;
+    const faceCY = y + h * 0.79;
+    // 데이브 느낌의 헤어 실루엣
+    ctx.fillStyle = hair;
+    ctx.fillRect(faceCX - w * 0.22, faceCY - h * 0.18, w * 0.44, h * 0.06);
+    ctx.fillStyle = skinTone;
     ctx.beginPath();
-    ctx.moveTo(drawX + w * 0.5, y + h * 0.88);
-    ctx.lineTo(drawX + w * 0.72, y + h * 0.7);
+    ctx.ellipse(faceCX, faceCY, w * 0.2, h * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = beard;
+    ctx.beginPath();
+    ctx.ellipse(faceCX, faceCY + h * 0.05, w * 0.2, h * 0.08, 0, 0, Math.PI);
+    ctx.fill();
+    // 턱수염 위 콧수염 포인트
+    ctx.fillRect(faceCX - w * 0.12, faceCY + h * 0.01, w * 0.24, h * 0.03);
+
+    // 마스크 프레임 + 바이저
+    const maskX = drawX + w * 0.29;
+    const maskY = y + h * 0.69;
+    const maskW = w * 0.42;
+    const maskH = h * 0.13;
+    ctx.fillStyle = maskFrame;
+    ctx.fillRect(maskX, maskY, maskW, maskH);
+    ctx.fillStyle = maskShade;
+    ctx.fillRect(maskX, maskY + maskH * 0.75, maskW, maskH * 0.25);
+    ctx.fillStyle = visor;
+    ctx.fillRect(maskX + maskW * 0.08, maskY + maskH * 0.12, maskW * 0.84, maskH * 0.6);
+    ctx.fillStyle = visorHighlight;
+    ctx.fillRect(maskX + maskW * 0.12, maskY + maskH * 0.18, maskW * 0.2, maskH * 0.2);
+
+    // 레귤레이터 + 호스(마스크에서 탱크로 연결되는 포인트)
+    ctx.fillStyle = hose;
+    ctx.fillRect(drawX + w * 0.47, y + h * 0.82, w * 0.06, h * 0.03);
+    ctx.strokeStyle = hose;
+    ctx.lineWidth = Math.max(1, lineWidth * 0.8);
+    ctx.beginPath();
+    ctx.moveTo(drawX + w * 0.5, y + h * 0.83);
+    ctx.lineTo(drawX + w * 0.66, y + h * 0.62);
     ctx.stroke();
 
-    // 부츠/발끝 강조
-    ctx.fillStyle = boot;
-    ctx.fillRect(drawX + w * 0.24, y + h * 0.2, w * 0.16, h * 0.04);
-    ctx.fillRect(drawX + w * 0.6, y + h * 0.2, w * 0.16, h * 0.04);
-
-    // 슈트 하이라이트 라인
-    ctx.fillStyle = accent;
-    ctx.fillRect(drawX + w * 0.32, y + h * 0.44, w * 0.36, h * 0.04);
-
+    // 외곽선은 기본 라인 두께로 복원해 선명도 유지
+    ctx.lineWidth = lineWidth;
     // 캐릭터 외곽선으로 선명도 강화
     ctx.strokeStyle = outline;
-    ctx.strokeRect(drawX + w * 0.28, y + h * 0.36, w * 0.44, h * 0.52);
+    ctx.strokeRect(torsoX, torsoY, torsoW, torsoH);
+    ctx.strokeRect(maskX, maskY, maskW, maskH);
     ctx.restore();
+  }
+
+  // 캐릭터 선택 카드에 표시할 미리보기 렌더링
+  function renderCharacterPreviews(time = 0) {
+    DOM.characterCards.forEach((card) => {
+      const canvas = card.querySelector(".card-canvas");
+      if (!canvas) {
+        return;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+
+      // 디바이스 픽셀 비율에 맞춰 선명한 미리보기 캔버스 구성
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // 카드 전용 바다 배경으로 분위기 강화
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, "rgba(12, 46, 78, 0.9)");
+      gradient.addColorStop(1, "rgba(35, 120, 170, 0.85)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      // 미리보기용 플레이어 사이즈/위치 정의
+      const playerWidth = width * 0.52;
+      const playerHeight = playerWidth * 1.5;
+      // 숨쉬기 느낌의 미세 상하 움직임
+      const bob = Math.sin(time * 2.4) * height * 0.03;
+      const player = {
+        x: (width - playerWidth) * 0.5,
+        y: (height - playerHeight) * 0.38 + bob,
+        width: playerWidth,
+        height: playerHeight,
+      };
+
+      const character = card.dataset.character || "longfin";
+      const facing = character === "shortfin" ? -1 : 1;
+      drawPlayer(ctx, player, character, facing, true, time);
+    });
+  }
+
+  // 캐릭터 선택 미리보기 애니메이션 상태 관리
+  let previewAnimationId = 0;
+  let previewTimeCache = 0;
+
+  // 캐릭터 화면 활성 여부 확인
+  function isCharacterScreenActive() {
+    return DOM.screens.character.classList.contains("is-active");
+  }
+
+  // 캐릭터 미리보기 애니메이션 시작
+  function startCharacterPreviewAnimation() {
+    if (previewAnimationId) {
+      cancelAnimationFrame(previewAnimationId);
+    }
+    const startTime = performance.now();
+
+    const animate = (now) => {
+      if (!isCharacterScreenActive()) {
+        previewAnimationId = 0;
+        return;
+      }
+      previewTimeCache = (now - startTime) / 1000;
+      renderCharacterPreviews(previewTimeCache);
+      previewAnimationId = requestAnimationFrame(animate);
+    };
+
+    previewAnimationId = requestAnimationFrame(animate);
+  }
+
+  // 캐릭터 미리보기 애니메이션 중단
+  function stopCharacterPreviewAnimation() {
+    if (!previewAnimationId) {
+      return;
+    }
+    cancelAnimationFrame(previewAnimationId);
+    previewAnimationId = 0;
   }
 
   // 바위 장애물 렌더링
@@ -1087,7 +1248,13 @@
       resetToIntro();
     });
 
-    window.addEventListener("resize", () => resizeCanvas(game));
+    window.addEventListener("resize", () => {
+      resizeCanvas(game);
+      // 캐릭터 화면이 활성화된 경우 미리보기 리사이즈 반영
+      if (isCharacterScreenActive()) {
+        renderCharacterPreviews(previewTimeCache);
+      }
+    });
   }
 
   // Initialize app after DOM is ready

@@ -109,6 +109,8 @@ input {
 .field {
   display: grid;
   gap: 6px;
+  /* 모바일 그리드 레이아웃에서 입력창이 넘치지 않도록 축소 허용 */
+  min-width: 0;
 }
 
 .field-label {
@@ -118,6 +120,11 @@ input {
 
 input[type="text"],
 input[type="tel"] {
+  /* 일부 모바일에서 입력창이 과도하게 늘어나는 현상 방지 */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
   padding: 12px 14px;
   border-radius: 10px;
   border: 2px solid var(--border);
@@ -206,6 +213,27 @@ input:focus {
   color: var(--text);
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+/* 캐릭터 카드 내부 레이아웃/미리보기 스타일 */
+.card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-canvas {
+  width: 92px;
+  height: 92px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 170, 210, 0.3);
+  background: radial-gradient(circle at 30% 20%, rgba(80, 160, 210, 0.35), rgba(12, 32, 48, 0.95));
+  flex-shrink: 0;
+}
+
+.card-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .card h3 {
