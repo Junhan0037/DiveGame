@@ -68,7 +68,7 @@
           storageKey: "prini",
           // 초보라 조작이 어려운 설정: 더 빠른 하강 + 빽빽한 장애물
           // 오래 버티도록 수심 상승은 느리게, 대신 장애물은 매우 촘촘하게
-          depthRate: 0.25,
+          depthRate: 0.5,
           playerSpeed: 170,
           spawnMin: 0.22,
           spawnMax: 0.4,

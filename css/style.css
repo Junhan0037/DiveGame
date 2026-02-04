@@ -311,7 +311,7 @@ input:focus {
 /* 좌측 상단 수심 단일 표시 */
 .hud-simple {
   position: absolute;
-  top: 12px;
+  top: 24px;
   left: 12px;
   padding: 4px 6px;
   display: inline-flex;
