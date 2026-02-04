@@ -100,6 +100,15 @@ input {
   justify-content: center;
 }
 
+/* 결과 패널은 화면 높이를 넘지 않도록 제한하고 내부 영역만 스크롤 */
+#screen-result .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(72dvh, 520px);
+  overflow: hidden;
+}
+
 .panel {
   width: 100%;
   max-width: var(--max-width);
@@ -455,7 +464,9 @@ input:focus {
   /* 결과 화면에서 랭킹 영역을 내부 스크롤 컨테이너로 제한 */
   display: flex;
   flex-direction: column;
-  max-height: min(320px, 40vh);
+  max-height: min(240px, 30vh);
+  flex: 1;
+  min-height: 0;
 }
 
 .leaderboard-header {
@@ -481,6 +492,7 @@ input:focus {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
+  min-height: 0;
 }
 
 .leaderboard-list li {
