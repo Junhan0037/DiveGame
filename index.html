@@ -27,9 +27,13 @@
   <main id="app" class="app">
     <!-- 시작/입력 화면 -->
     <section id="screen-intro" class="screen is-active" aria-labelledby="intro-title">
+      <!-- 회사 로고: 패널 밖 독립 배치 -->
+      <div class="intro-logo">
+        <img src="img/logo.png" alt="회사 로고">
+      </div>
       <div class="panel">
-        <h1 id="intro-title" class="title">다이빙 게임</h1>
-        <p class="subtitle">1분 안에 최심 기록에 도전하세요.</p>
+        <h1 id="intro-title" class="title">프리다이빙 초급 도전!</h1>
+        <p class="subtitle">수심 10M 내려가면 통과!</p>
 
         <form id="player-form" class="form">
           <label class="field">
@@ -54,8 +58,8 @@
     <!-- 캐릭터 선택 화면 -->
     <section id="screen-character" class="screen" aria-labelledby="character-title">
       <div class="panel">
-        <h2 id="character-title" class="title">캐릭터 선택</h2>
-        <p class="subtitle">롱핀은 빠르지만 어렵고, 숏핀은 느리지만 안정적입니다.</p>
+        <h2 id="character-title" class="title">캐릭터 선택 TIP</h2>
+        <p class="subtitle">고고무제한 무료 코칭반을 이용한 캐릭터가 자격증 취득에 유리합니다.</p>
 
         <div class="card-grid">
           <button class="card" type="button" data-character="longfin" aria-pressed="false">
@@ -63,8 +67,8 @@
               <!-- 캐릭터 미리보기 캔버스(데이브 스타일) -->
               <canvas class="card-canvas" width="120" height="120" aria-hidden="true"></canvas>
               <div class="card-text">
-                <h3>롱핀</h3>
-                <p>속도 빠름 / 고득점 가능</p>
+                <h3>프린이</h3>
+                <p>덕다이빙 첫 도전 / 성격 급함</p>
               </div>
             </div>
           </button>
@@ -73,8 +77,8 @@
               <!-- 캐릭터 미리보기 캔버스(데이브 스타일) -->
               <canvas class="card-canvas" width="120" height="120" aria-hidden="true"></canvas>
               <div class="card-text">
-                <h3>숏핀</h3>
-                <p>속도 느림 / 안정적</p>
+                <h3>고고다이버</h3>
+                <p>고고 무제한 코칭반 3회 출석</p>
               </div>
             </div>
           </button>
@@ -89,23 +93,17 @@
 
     <!-- 게임 플레이 화면 -->
     <section id="screen-game" class="screen" aria-labelledby="game-title">
-      <div class="hud">
-        <div class="hud-item">
-          <span class="hud-label">수심</span>
-          <span id="hud-depth" class="hud-value">0.0m</span>
-        </div>
-        <div class="hud-item">
-          <span class="hud-label">캐릭터</span>
-          <span id="hud-character" class="hud-value">-</span>
-        </div>
-        <div class="hud-item">
-          <span class="hud-label">조작</span>
-          <span class="hud-value">좌/우</span>
-        </div>
-      </div>
-
       <div class="game-area">
+        <!-- 게임 HUD: 게임 영역 안 좌측 상단 표시 -->
+        <div class="hud-simple">
+          <span class="hud-depth-label">현재 수심</span>
+          <span id="hud-depth" class="hud-depth">0.0m</span>
+        </div>
         <canvas id="game-canvas" width="360" height="640" aria-label="게임 캔버스"></canvas>
+        <!-- 게임 시작 오버레이: 화면 진입 후 시작 버튼 노출 -->
+        <div id="game-start-overlay" class="game-start-overlay" aria-live="polite">
+          <button id="btn-game-start" class="btn primary" type="button">START</button>
+        </div>
         <div class="touch-controls" aria-hidden="true">
           <button id="btn-left" class="btn control" type="button">◀</button>
           <button id="btn-right" class="btn control" type="button">▶</button>
@@ -115,8 +113,18 @@
 
     <!-- 결과/랭킹 화면 -->
     <section id="screen-result" class="screen" aria-labelledby="result-title">
+      <!-- 결과 상태 메시지(합격/탈락) : 패널 바깥 노출 -->
+      <div id="result-message" class="result-message" role="status" aria-live="polite">
+        <p id="result-headline" class="result-headline"></p>
+        <p id="result-subline" class="result-subline"></p>
+      </div>
       <div class="panel">
-        <h2 id="result-title" class="title">게임 종료</h2>
+        <!-- 랭킹 타이틀: 3줄 구성 + 중앙 정렬 -->
+        <h2 id="result-title" class="title result-title">
+          <span>SPOEX2026</span><br>
+          <span>수심 랭킹에 도전하고</span><br>
+          <span>선물 받으세요!</span>
+        </h2>
         <p class="subtitle">최종 수심</p>
         <div id="final-depth" class="final-depth">0.0m</div>
 
@@ -135,6 +143,8 @@
           <button id="btn-home" class="btn ghost" type="button">처음으로</button>
         </div>
       </div>
+      <!-- 합격 시에만 표시되는 안내 문구 : 패널 바깥 노출 -->
+      <p id="result-footer" class="result-footer"></p>
     </section>
 
     <!-- 알림 토스트 -->

@@ -20,9 +20,17 @@
     hudDepth: document.getElementById("hud-depth"),
     hudCharacter: document.getElementById("hud-character"),
     canvas: document.getElementById("game-canvas"),
+    gameStartOverlay: document.getElementById("game-start-overlay"),
+    btnGameStart: document.getElementById("btn-game-start"),
     btnLeft: document.getElementById("btn-left"),
     btnRight: document.getElementById("btn-right"),
+    // 터치 컨트롤 컨테이너(시작 전 비활성 처리용)
+    touchControls: document.querySelector(".touch-controls"),
     finalDepth: document.getElementById("final-depth"),
+    resultMessage: document.getElementById("result-message"),
+    resultHeadline: document.getElementById("result-headline"),
+    resultSubline: document.getElementById("result-subline"),
+    resultFooter: document.getElementById("result-footer"),
     leaderboardList: document.getElementById("leaderboard-list"),
     leaderboardStatus: document.getElementById("leaderboard-status"),
     btnRetry: document.getElementById("btn-retry"),
@@ -41,25 +49,61 @@
       baseHeight: 640,
     },
     gameplay: {
-      // 수심 진행 속도(미터/초) - 전체 속도 상향
-      // 수심 수치는 1분당 약 30m 수준으로 더 느리게 조정
-      longfinDepthRate: 0.5,
-      shortfinDepthRate: 0.4,
-      // 느려진 수심 수치와 별개로 화면 하강 속도는 유지
+      // 목표 수심(미터) - 합격 판단 및 난이도 보정 기준
+      targetDepth: 10,
+      // 수심 수치와 화면 하강 속도 변환 비율
       pixelsPerMeter: 420,
-      playerSpeed: 240,
-      // 장애물 스폰 기본 간격(초) - 난이도 상향
-      spawnMin: 0.5,
-      spawnMax: 0.85,
-      // 난이도 상승을 더 이른 시간에 공격적으로 체감시키기 위한 보정값
-      difficultyDepthScale: 110,
-      difficultyTimeScale: 18,
+      // 난이도 상승 가중치(전역 공통)
       difficultyDepthWeight: 0.75,
       difficultyTimeWeight: 0.25,
       // 캐릭터 시작/목표 위치(화면 비율)
       startScreenRatio: 0.18,
       targetScreenRatio: 0.35,
       maxQueue: 20,
+      // 캐릭터별 난이도 프리셋(롱핀=프린이, 숏핀=고고다이버)
+      characterSettings: {
+        longfin: {
+          label: "프린이",
+          // DB 저장용 영문 키
+          storageKey: "prini",
+          // 초보라 조작이 어려운 설정: 더 빠른 하강 + 빽빽한 장애물
+          // 오래 버티도록 수심 상승은 느리게, 대신 장애물은 매우 촘촘하게
+          depthRate: 0.25,
+          playerSpeed: 170,
+          spawnMin: 0.22,
+          spawnMax: 0.4,
+          difficultyDepthScale: 25,
+          difficultyTimeScale: 6,
+        },
+        shortfin: {
+          label: "고고다이버",
+          // DB 저장용 영문 키
+          storageKey: "gogodiver",
+          // 20초에 10m 도달(10 / 20 = 0.5) + 매우 쉬운 난이도
+          depthRate: 10 / 20,
+          playerSpeed: 300,
+          spawnMin: 1.6,
+          spawnMax: 2.4,
+          difficultyDepthScale: 200,
+          difficultyTimeScale: 40,
+        },
+      },
+      // 고고다이버가 10m를 넘기면 즉시 난이도 급상승
+      gogodiverBoost: {
+        depthThreshold: 10,
+        spawnMinMultiplier: 0.32,
+        spawnMaxMultiplier: 0.38,
+        depthScaleMultiplier: 0.38,
+        timeScaleMultiplier: 0.5,
+      },
+      // 30m 이후 전체 난이도 급상승(루즈함 방지)
+      depthSpike: {
+        depthThreshold: 30,
+        spawnMinMultiplier: 0.3,
+        spawnMaxMultiplier: 0.35,
+        depthScaleMultiplier: 0.4,
+        timeScaleMultiplier: 0.5,
+      },
     },
   };
 
@@ -85,6 +129,17 @@
     right: false,
   };
 
+  // 캔버스 캐릭터에 사용할 이미지 에셋
+  const ASSETS = {
+    // 회사 로고(고고다이버 전용 데칼)
+    logo: (() => {
+      const img = new Image();
+      img.src = "img/logo.png";
+      img.decoding = "async";
+      return img;
+    })(),
+  };
+
   // Return safe numeric range for physics values
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -105,6 +160,14 @@
     Object.entries(DOM.screens).forEach(([key, section]) => {
       section.classList.toggle("is-active", key === screenId);
     });
+    // 입력/캐릭터 화면에서는 배경을 다크 모드로 전환
+    const isDarkScreen = screenId === "intro" || screenId === "character" || screenId === "result";
+    document.body.classList.toggle("body-dark", isDarkScreen);
+    // 게임 화면이 아니면 시작 오버레이를 숨김 처리
+    if (screenId !== "game") {
+      DOM.gameStartOverlay.classList.remove("is-visible");
+      DOM.touchControls?.classList.remove("is-disabled");
+    }
     // 캐릭터 선택 화면 노출 시 미리보기 캔버스 동기화
     if (screenId === "character") {
       // 화면 전환 직후 레이아웃이 확정된 뒤 미리보기 애니메이션 시작
@@ -156,7 +219,13 @@
 
   // Convert character id to readable label
   function getCharacterLabel(character) {
-    return character === "longfin" ? "롱핀" : "숏핀";
+    // 데이터 키(롱핀/숏핀)를 신규 캐릭터 명칭으로 매핑
+    return getCharacterPreset(character).label;
+  }
+
+  // DB 저장용 캐릭터 키 매핑
+  function getCharacterStorageKey(character) {
+    return getCharacterPreset(character).storageKey;
   }
 
   // Random helper for obstacle spawning
@@ -224,23 +293,62 @@
   }
 
   // 수심과 경과 시간을 함께 반영해 난이도를 더 빠르게 상승
-  function getSpawnInterval(depth, time) {
-    // 초반부터 난이도 상승이 느껴지도록 곡선을 완화(0.7 제곱)
-    const depthFactor = Math.pow(clamp(depth / CONFIG.gameplay.difficultyDepthScale, 0, 1), 0.7);
-    const timeFactor = Math.pow(clamp(time / CONFIG.gameplay.difficultyTimeScale, 0, 1), 0.7);
+  function getSpawnInterval(depth, time, preset) {
+    // 고고다이버는 10m 초과 시 난이도 보정 적용
+    const tunedPreset = applyGogodiverBoost(depth, preset);
+    // 30m 이후에는 모든 캐릭터 난이도를 추가로 급상승
+    const spikedPreset = applyDepthSpike(depth, tunedPreset);
+    // 캐릭터 난이도 프리셋에 맞춰 스폰 속도 계산
+    const depthFactor = Math.pow(clamp(depth / spikedPreset.difficultyDepthScale, 0, 1), 0.7);
+    const timeFactor = Math.pow(clamp(time / spikedPreset.difficultyTimeScale, 0, 1), 0.7);
     const difficulty =
       depthFactor * CONFIG.gameplay.difficultyDepthWeight +
       timeFactor * CONFIG.gameplay.difficultyTimeWeight;
     const normalizedDifficulty = clamp(difficulty, 0, 1);
-    const minInterval = lerp(CONFIG.gameplay.spawnMin, CONFIG.gameplay.spawnMin * 0.5, normalizedDifficulty);
-    const maxInterval = lerp(CONFIG.gameplay.spawnMax, CONFIG.gameplay.spawnMax * 0.6, normalizedDifficulty);
+    const minInterval = lerp(spikedPreset.spawnMin, spikedPreset.spawnMin * 0.5, normalizedDifficulty);
+    const maxInterval = lerp(spikedPreset.spawnMax, spikedPreset.spawnMax * 0.6, normalizedDifficulty);
     const safeMin = Math.min(minInterval, maxInterval);
     const safeMax = Math.max(minInterval, maxInterval);
     return randomInRange(safeMin, safeMax);
   }
 
+  // 캐릭터 키를 난이도 프리셋으로 매핑
+  function getCharacterPreset(character) {
+    return CONFIG.gameplay.characterSettings[character] || CONFIG.gameplay.characterSettings.shortfin;
+  }
+
+  // 고고다이버 10m 이후 난이도 급상승 보정
+  function applyGogodiverBoost(depth, preset) {
+    const boost = CONFIG.gameplay.gogodiverBoost;
+    if (preset.storageKey !== "gogodiver" || depth < boost.depthThreshold) {
+      return preset;
+    }
+    return {
+      ...preset,
+      spawnMin: preset.spawnMin * boost.spawnMinMultiplier,
+      spawnMax: preset.spawnMax * boost.spawnMaxMultiplier,
+      difficultyDepthScale: preset.difficultyDepthScale * boost.depthScaleMultiplier,
+      difficultyTimeScale: preset.difficultyTimeScale * boost.timeScaleMultiplier,
+    };
+  }
+
+  // 30m 이후 전체 난이도 급상승(긴 플레이 방지)
+  function applyDepthSpike(depth, preset) {
+    const spike = CONFIG.gameplay.depthSpike;
+    if (depth < spike.depthThreshold) {
+      return preset;
+    }
+    return {
+      ...preset,
+      spawnMin: preset.spawnMin * spike.spawnMinMultiplier,
+      spawnMax: preset.spawnMax * spike.spawnMaxMultiplier,
+      difficultyDepthScale: preset.difficultyDepthScale * spike.depthScaleMultiplier,
+      difficultyTimeScale: preset.difficultyTimeScale * spike.timeScaleMultiplier,
+    };
+  }
+
   // 바다 장애물 타입 목록
-  const OBSTACLE_TYPES = ["rock", "coral", "seaweed", "jellyfish"];
+  const OBSTACLE_TYPES = ["rock", "coral", "seaweed", "jellyfish", "shark", "ray", "urchin", "eel"];
 
   // 장애물 타입을 무작위로 선택
   function pickObstacleType() {
@@ -271,6 +379,26 @@
     if (type === "jellyfish") {
       width = base * 0.16;
       height = base * 0.2;
+    }
+
+    if (type === "shark") {
+      width = base * 0.32;
+      height = base * 0.16;
+    }
+
+    if (type === "ray") {
+      width = base * 0.3;
+      height = base * 0.18;
+    }
+
+    if (type === "urchin") {
+      width = base * 0.18;
+      height = base * 0.18;
+    }
+
+    if (type === "eel") {
+      width = base * 0.32;
+      height = base * 0.12;
     }
 
     const scale = randomInRange(0.85, 1.15);
@@ -369,6 +497,8 @@
 
     if (!entries || entries.length === 0) {
       const emptyItem = document.createElement("li");
+      // 빈 랭킹일 때는 전체 영역을 차지하도록 전용 클래스 부여
+      emptyItem.className = "leaderboard-empty";
       emptyItem.textContent = "아직 기록이 없습니다.";
       DOM.leaderboardList.appendChild(emptyItem);
       return;
@@ -465,26 +595,82 @@
     const w = player.width;
     const h = player.height;
 
-    // 데이브 더 다이버 느낌의 컬러 팔레트(블루 슈트 + 옐로 마스크 + 오렌지 핀)
-    const suitBase = "#1d3f7a";
-    const suitShade = "#112a52";
-    const suitHighlight = "#2f6fd6";
-    const maskFrame = "#ffd45a";
-    const maskShade = "#f0b83a";
-    const skinTone = "#f3c9a3";
-    const beard = "#3b2b25";
-    const visor = "#7fd9ff";
-    const visorHighlight = "rgba(255, 255, 255, 0.55)";
-    const tankMain = "#ffcc4d";
-    const tankShade = "#e2a93a";
-    const strap = "#1a1a1a";
-    const glove = "#1a1a1a";
-    const boot = "#121820";
-    const hair = "#2a1d18";
-    const finMain = character === "longfin" ? "#f06d2f" : "#e24d3a";
-    const finShade = character === "longfin" ? "#c4511f" : "#c13a2c";
-    const outline = "rgba(6, 12, 20, 0.65)";
-    const hose = "#e14a33";
+    const isPrini = character === "longfin";
+    const isGogodiver = character === "shortfin";
+
+    // 캐릭터별 컬러/무드 분리(프린이=허술, 고고다이버=프로)
+    const palette = isGogodiver
+      ? {
+          suitBase: "#1b4dbb",
+          suitShade: "#0f2f73",
+          suitHighlight: "#3f8bff",
+          suitAccent: "#f2c14e",
+          maskFrame: "#ffd45a",
+          maskShade: "#f0b83a",
+          skinTone: "#f3c9a3",
+          beard: "#3b2b25",
+          visor: "#7fd9ff",
+          visorHighlight: "rgba(255, 255, 255, 0.6)",
+          tankMain: "#ffcc4d",
+          tankShade: "#e2a93a",
+          strap: "#0f1115",
+          glove: "#0f1115",
+          boot: "#0b121a",
+          hair: "#2a1d18",
+          finMain: "#ff6a2c",
+          finShade: "#cc4d1f",
+          outline: "rgba(6, 12, 20, 0.7)",
+          hose: "#ff5a3b",
+        }
+      : {
+          suitBase: "#2b3a45",
+          suitShade: "#1f2931",
+          suitHighlight: "#3c4b57",
+          suitAccent: "#5a6770",
+          maskFrame: "#c9b48f",
+          maskShade: "#a98f6b",
+          skinTone: "#e7c2a1",
+          beard: "#3b2b25",
+          visor: "#9fd2e8",
+          visorHighlight: "rgba(255, 255, 255, 0.35)",
+          tankMain: "#c6a46b",
+          tankShade: "#9a7a3f",
+          strap: "#2a2a2a",
+          glove: "#1c1c1c",
+          boot: "#151b21",
+          hair: "#3a2c28",
+          finMain: "#b05a3b",
+          finShade: "#7d3f2a",
+          outline: "rgba(6, 12, 20, 0.5)",
+          hose: "#b1432f",
+        };
+
+    const {
+      suitBase,
+      suitShade,
+      suitHighlight,
+      suitAccent,
+      maskFrame,
+      maskShade,
+      skinTone,
+      beard,
+      visor,
+      visorHighlight,
+      tankMain,
+      tankShade,
+      strap,
+      glove,
+      boot,
+      hair,
+      finMain,
+      finShade,
+      outline,
+      hose,
+    } = palette;
+
+    // 프린이의 어설픈 자세/흔들림 표현
+    const clumsyWobble = isPrini ? Math.sin(time * 6.2) * w * 0.02 : 0;
+    const postureShift = isPrini ? h * 0.02 : -h * 0.01;
 
     // 좌우 이동 방향에 따라 캐릭터를 좌우 반전하고 대각 하강 포즈를 만들기 위한 회전 적용
     ctx.save();
@@ -513,7 +699,7 @@
     // 애니메이션 파라미터(핀/팔/다리 수영 동작)
     const finSwing = Math.sin(time * 9) * h * 0.02;
     const swimPhase = time * 8.2;
-    const swimIntensity = moving ? 1 : 0.45;
+    const swimIntensity = (moving ? 1 : 0.45) * (isPrini ? 0.85 : 1.1);
     const armSwing = Math.cos(swimPhase) * h * 0.04 * swimIntensity;
     const armReach = Math.sin(swimPhase) * w * 0.07 * swimIntensity;
     const armOut = Math.abs(armSwing) * 0.6;
@@ -523,40 +709,48 @@
 
     // 헤드라이트 연출은 제거(요청 사항)
 
-    // 핀 길이로 롱핀/숏핀 구분 (상단 배치)
-    // 롱핀/숏핀 길이 차이를 확실히 구분
-    const finHeight = character === "longfin" ? h * 0.32 : h * 0.1;
-    const finY = y + h * 0.02 + finSwing + legKick * 0.25;
-    const finWidth = w * 0.22;
-    const leftFinX = drawX + w * 0.14 - legSpread * 0.4;
-    const rightFinX = drawX + w * 0.64 + legSpread * 0.4;
+    // 핀 길이/크기 차이로 캐릭터 성격 대비
+    const finHeight = isPrini ? h * 0.16 : h * 0.26;
+    const finWidth = w * (isPrini ? 0.18 : 0.24);
+    const finY = y + h * 0.02 + finSwing + legKick * 0.25 + (isPrini ? h * 0.015 : 0);
+    const finSpread = legSpread * (isPrini ? 0.5 : 0.9);
+    const leftFinX = drawX + w * 0.14 - finSpread * 0.4 + clumsyWobble * 0.2;
+    const rightFinX = drawX + w * 0.64 + finSpread * 0.4 - clumsyWobble * 0.2;
 
     // 데이브 특유의 통통한 핀 형태를 폴리곤으로 표현
-    ctx.fillStyle = finMain;
+    const leftFinHeight = isPrini ? finHeight * 0.7 : finHeight;
+    const rightFinHeight = finHeight;
+    ctx.fillStyle = isPrini ? finShade : finMain;
     ctx.beginPath();
     ctx.moveTo(leftFinX, finY);
     ctx.lineTo(leftFinX + finWidth, finY);
-    ctx.lineTo(leftFinX + finWidth * 0.82, finY + finHeight);
-    ctx.lineTo(leftFinX + finWidth * 0.18, finY + finHeight);
+    ctx.lineTo(leftFinX + finWidth * 0.82, finY + leftFinHeight);
+    ctx.lineTo(leftFinX + finWidth * 0.18, finY + leftFinHeight);
     ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = finMain;
     ctx.beginPath();
     ctx.moveTo(rightFinX, finY);
     ctx.lineTo(rightFinX + finWidth, finY);
-    ctx.lineTo(rightFinX + finWidth * 0.82, finY + finHeight);
-    ctx.lineTo(rightFinX + finWidth * 0.18, finY + finHeight);
+    ctx.lineTo(rightFinX + finWidth * 0.82, finY + rightFinHeight);
+    ctx.lineTo(rightFinX + finWidth * 0.18, finY + rightFinHeight);
     ctx.closePath();
     ctx.fill();
     // 핀 스트랩/톤 분리로 입체감 강조
     ctx.fillStyle = finShade;
-    ctx.fillRect(leftFinX + finWidth * 0.2, finY + finHeight * 0.18, finWidth * 0.6, finHeight * 0.12);
-    ctx.fillRect(rightFinX + finWidth * 0.2, finY + finHeight * 0.18, finWidth * 0.6, finHeight * 0.12);
+    ctx.fillRect(leftFinX + finWidth * 0.2, finY + leftFinHeight * 0.18, finWidth * 0.6, leftFinHeight * 0.12);
+    ctx.fillRect(rightFinX + finWidth * 0.2, finY + rightFinHeight * 0.18, finWidth * 0.6, rightFinHeight * 0.12);
+    // 프린이 핀 보강 패치로 허술함 강조
+    if (isPrini) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+      ctx.fillRect(leftFinX + finWidth * 0.12, finY + leftFinHeight * 0.55, finWidth * 0.2, leftFinHeight * 0.18);
+    }
 
     // 다리(핀과 몸통 연결) - 킥 모션을 위해 상/하 분할
     ctx.fillStyle = suitShade;
-    const leftLegX = drawX + w * 0.24 - legSpread - legOut;
-    const rightLegX = drawX + w * 0.6 + legSpread + legOut;
-    const legY = y + h * 0.22 + finSwing * 0.4;
+    const leftLegX = drawX + w * 0.24 - legSpread - legOut + clumsyWobble * 0.2;
+    const rightLegX = drawX + w * 0.6 + legSpread + legOut - clumsyWobble * 0.2;
+    const legY = y + h * 0.22 + finSwing * 0.4 + postureShift;
     const legW = w * 0.16;
     const thighH = h * 0.11;
     const calfH = h * 0.1;
@@ -572,34 +766,55 @@
     ctx.fillRect(leftLegX, legY - h * 0.02 + legKick, legW, h * 0.04);
     ctx.fillRect(rightLegX, legY - h * 0.02 - legKick, legW, h * 0.04);
 
-    // 산소 탱크(등) - 데이브의 옐로 톤 포인트
+    // 산소 탱크(등) - 캐릭터별 크기 차이로 대비
+    const tankW = w * (isPrini ? 0.24 : 0.32);
+    const tankH = h * (isPrini ? 0.22 : 0.3);
+    const tankX = drawX + w * 0.5 - tankW * 0.5 + clumsyWobble * 0.15;
+    const tankY = y + h * 0.26 + postureShift;
     ctx.fillStyle = tankMain;
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.26, w * 0.3, h * 0.28);
+    ctx.fillRect(tankX, tankY, tankW, tankH);
     ctx.fillStyle = tankShade;
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.26, w * 0.09, h * 0.28);
+    ctx.fillRect(tankX, tankY, tankW * 0.28, tankH);
     // 탱크 스트랩
     ctx.fillStyle = strap;
-    ctx.fillRect(drawX + w * 0.34, y + h * 0.44, w * 0.3, h * 0.04);
+    ctx.fillRect(tankX, tankY + tankH * 0.66, tankW, tankH * 0.12);
+    // 고고다이버 탱크 배지 라인
+    if (isGogodiver) {
+      ctx.fillStyle = suitAccent;
+      ctx.fillRect(tankX + tankW * 0.62, tankY + tankH * 0.18, tankW * 0.28, tankH * 0.1);
+    }
 
-    // 몸통(통통한 블루 슈트)
-    const torsoX = drawX + w * 0.2;
-    const torsoY = y + h * 0.33;
-    const torsoW = w * 0.6;
-    const torsoH = h * 0.34;
+    // 몸통(통통한 슈트)
+    const torsoW = w * (isPrini ? 0.56 : 0.62);
+    const torsoH = h * (isPrini ? 0.3 : 0.36);
+    const torsoX = drawX + w * 0.5 - torsoW * 0.5 + clumsyWobble * 0.25;
+    const torsoY = y + h * 0.33 + postureShift;
     ctx.fillStyle = suitBase;
     ctx.fillRect(torsoX, torsoY, torsoW, torsoH);
     // 슈트 하이라이트 라인
     ctx.fillStyle = suitHighlight;
     ctx.fillRect(torsoX + torsoW * 0.2, torsoY + torsoH * 0.28, torsoW * 0.6, torsoH * 0.08);
+    // 고고다이버 전용 액센트 라인
+    if (isGogodiver) {
+      ctx.fillStyle = suitAccent;
+      ctx.fillRect(torsoX + torsoW * 0.18, torsoY + torsoH * 0.62, torsoW * 0.64, torsoH * 0.06);
+    }
+    // 고고다이버 로고 데칼(가슴 중앙)
+    if (isGogodiver && ASSETS.logo.complete && ASSETS.logo.naturalWidth > 0) {
+      const logoSize = torsoW * 0.42;
+      const logoX = torsoX + torsoW * 0.5 - logoSize * 0.5;
+      const logoY = torsoY + torsoH * 0.12;
+      ctx.drawImage(ASSETS.logo, logoX, logoY, logoSize, logoSize);
+    }
 
     // 팔(양측) - 상완/하완 분리로 수영 스트로크 표현
     ctx.fillStyle = suitShade;
-    const leftArmX = drawX + w * 0.1 + armReach - armOut;
-    const rightArmX = drawX + w * 0.76 - armReach + armOut;
-    const armY = y + h * 0.4;
-    const armW = w * 0.14;
-    const upperArmH = h * 0.11;
-    const lowerArmH = h * 0.1;
+    const leftArmX = drawX + w * 0.1 + armReach - armOut + clumsyWobble * 0.2;
+    const rightArmX = drawX + w * 0.76 - armReach + armOut - clumsyWobble * 0.2;
+    const armY = torsoY + torsoH * 0.18;
+    const armW = w * (isPrini ? 0.12 : 0.14);
+    const upperArmH = h * (isPrini ? 0.1 : 0.11);
+    const lowerArmH = h * (isPrini ? 0.09 : 0.1);
     // 상완
     ctx.fillRect(leftArmX, armY + armSwing, armW, upperArmH);
     ctx.fillRect(rightArmX, armY - armSwing, armW, upperArmH);
@@ -611,13 +826,19 @@
     ctx.fillRect(leftArmX, armY + upperArmH + lowerArmH + armSwing * 0.4, armW, h * 0.05);
     ctx.fillRect(rightArmX, armY + upperArmH + lowerArmH - armSwing * 0.4, armW, h * 0.05);
 
+    // 마스크 프레임 + 바이저(좌표는 스트랩/레귤레이터에 공유)
+    const maskW = w * (isPrini ? 0.38 : 0.46);
+    const maskH = h * (isPrini ? 0.1 : 0.14);
+    const maskX = drawX + w * 0.5 - maskW * 0.5 + (isPrini ? w * 0.02 : 0);
+    const maskY = y + h * (isPrini ? 0.71 : 0.68) + postureShift;
+
     // 마스크 스트랩(얼굴 뒤로 감기는 라인)
     ctx.fillStyle = strap;
-    ctx.fillRect(drawX + w * 0.24, y + h * 0.71, w * 0.52, h * 0.03);
+    ctx.fillRect(maskX - w * 0.05, maskY + maskH * 0.6, maskW + w * 0.1, h * 0.03);
 
     // 얼굴(데이브 특유의 피부 톤과 턱수염)
-    const faceCX = drawX + w * 0.5;
-    const faceCY = y + h * 0.79;
+    const faceCX = drawX + w * 0.5 + clumsyWobble * 0.15;
+    const faceCY = y + h * 0.79 + postureShift;
     // 데이브 느낌의 헤어 실루엣
     ctx.fillStyle = hair;
     ctx.fillRect(faceCX - w * 0.22, faceCY - h * 0.18, w * 0.44, h * 0.06);
@@ -633,10 +854,6 @@
     ctx.fillRect(faceCX - w * 0.12, faceCY + h * 0.01, w * 0.24, h * 0.03);
 
     // 마스크 프레임 + 바이저
-    const maskX = drawX + w * 0.29;
-    const maskY = y + h * 0.69;
-    const maskW = w * 0.42;
-    const maskH = h * 0.13;
     ctx.fillStyle = maskFrame;
     ctx.fillRect(maskX, maskY, maskW, maskH);
     ctx.fillStyle = maskShade;
@@ -647,13 +864,15 @@
     ctx.fillRect(maskX + maskW * 0.12, maskY + maskH * 0.18, maskW * 0.2, maskH * 0.2);
 
     // 레귤레이터 + 호스(마스크에서 탱크로 연결되는 포인트)
+    const regulatorX = maskX + maskW * 0.5 - w * 0.03;
+    const regulatorY = maskY + maskH * 0.82;
     ctx.fillStyle = hose;
-    ctx.fillRect(drawX + w * 0.47, y + h * 0.82, w * 0.06, h * 0.03);
+    ctx.fillRect(regulatorX, regulatorY, w * 0.06, h * 0.03);
     ctx.strokeStyle = hose;
     ctx.lineWidth = Math.max(1, lineWidth * 0.8);
     ctx.beginPath();
-    ctx.moveTo(drawX + w * 0.5, y + h * 0.83);
-    ctx.lineTo(drawX + w * 0.66, y + h * 0.62);
+    ctx.moveTo(regulatorX + w * 0.03, regulatorY + h * 0.01);
+    ctx.lineTo(tankX + tankW * 0.8, tankY + tankH * 0.25);
     ctx.stroke();
 
     // 외곽선은 기본 라인 두께로 복원해 선명도 유지
@@ -814,6 +1033,112 @@
     }
   }
 
+  // 상어 장애물 렌더링
+  function drawShark(ctx, x, y, w, h) {
+    // 몸통
+    ctx.fillStyle = "#6f8aa3";
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.1, y + h * 0.6);
+    ctx.quadraticCurveTo(x + w * 0.35, y + h * 0.2, x + w * 0.72, y + h * 0.35);
+    ctx.quadraticCurveTo(x + w * 0.92, y + h * 0.45, x + w * 0.95, y + h * 0.6);
+    ctx.quadraticCurveTo(x + w * 0.92, y + h * 0.75, x + w * 0.68, y + h * 0.78);
+    ctx.quadraticCurveTo(x + w * 0.35, y + h * 0.9, x + w * 0.1, y + h * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // 등지느러미
+    ctx.fillStyle = "#5b6f84";
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.4, y + h * 0.25);
+    ctx.lineTo(x + w * 0.5, y + h * 0.02);
+    ctx.lineTo(x + w * 0.6, y + h * 0.3);
+    ctx.closePath();
+    ctx.fill();
+
+    // 꼬리 지느러미
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.06, y + h * 0.5);
+    ctx.lineTo(x - w * 0.02, y + h * 0.3);
+    ctx.lineTo(x + w * 0.08, y + h * 0.35);
+    ctx.lineTo(x + w * 0.1, y + h * 0.5);
+    ctx.lineTo(x + w * 0.08, y + h * 0.65);
+    ctx.lineTo(x - w * 0.02, y + h * 0.7);
+    ctx.closePath();
+    ctx.fill();
+
+    // 배 부분 하이라이트
+    ctx.fillStyle = "#b7c6d4";
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.6, y + h * 0.62, w * 0.18, h * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 눈
+    ctx.fillStyle = "#1a1f26";
+    ctx.beginPath();
+    ctx.arc(x + w * 0.78, y + h * 0.5, w * 0.03, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 가오리 장애물 렌더링
+  function drawRay(ctx, x, y, w, h) {
+    ctx.fillStyle = "#5a728c";
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.5, y + h * 0.15);
+    ctx.quadraticCurveTo(x + w * 0.05, y + h * 0.45, x + w * 0.2, y + h * 0.75);
+    ctx.quadraticCurveTo(x + w * 0.5, y + h * 0.6, x + w * 0.8, y + h * 0.75);
+    ctx.quadraticCurveTo(x + w * 0.95, y + h * 0.45, x + w * 0.5, y + h * 0.15);
+    ctx.closePath();
+    ctx.fill();
+
+    // 꼬리
+    ctx.strokeStyle = "#43586d";
+    ctx.lineWidth = Math.max(1, w * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.5, y + h * 0.65);
+    ctx.lineTo(x + w * 0.52, y + h * 0.98);
+    ctx.stroke();
+  }
+
+  // 성게 장애물 렌더링
+  function drawUrchin(ctx, x, y, w, h) {
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const radius = Math.min(w, h) * 0.32;
+    ctx.strokeStyle = "#3a3f3d";
+    ctx.lineWidth = Math.max(1, w * 0.06);
+
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (Math.PI * 2 * i) / 10;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(angle) * radius * 1.55, cy + Math.sin(angle) * radius * 1.55);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#2d3230";
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 곰치 장애물 렌더링
+  function drawEel(ctx, x, y, w, h) {
+    ctx.strokeStyle = "#5b7a4f";
+    ctx.lineWidth = Math.max(2, h * 0.35);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.1, y + h * 0.6);
+    ctx.quadraticCurveTo(x + w * 0.4, y + h * 0.2, x + w * 0.7, y + h * 0.6);
+    ctx.quadraticCurveTo(x + w * 0.85, y + h * 0.8, x + w * 0.95, y + h * 0.5);
+    ctx.stroke();
+
+    // 눈
+    ctx.fillStyle = "#1a1f26";
+    ctx.beginPath();
+    ctx.arc(x + w * 0.18, y + h * 0.52, h * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // 월드 좌표를 화면 좌표로 변환해 장애물 렌더링
   function drawObstacles(ctx, obstacles, cameraY, size) {
     obstacles.forEach((obstacle) => {
@@ -837,6 +1162,22 @@
 
       if (obstacle.type === "jellyfish") {
         drawJellyfish(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
+      }
+
+      if (obstacle.type === "shark") {
+        drawShark(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
+      }
+
+      if (obstacle.type === "ray") {
+        drawRay(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
+      }
+
+      if (obstacle.type === "urchin") {
+        drawUrchin(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
+      }
+
+      if (obstacle.type === "eel") {
+        drawEel(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
       }
     });
   }
@@ -880,6 +1221,10 @@
       coral: 0.2,
       seaweed: 0.28,
       jellyfish: 0.22,
+      shark: 0.2,
+      ray: 0.2,
+      urchin: 0.15,
+      eel: 0.25,
     };
     const shrink = shrinkMap[obstacle.type] ?? 0.2;
     const marginX = obstacle.width * shrink;
@@ -918,9 +1263,12 @@
     startScreenY: CONFIG.canvas.baseHeight * CONFIG.gameplay.startScreenRatio,
     targetScreenY: CONFIG.canvas.baseHeight * CONFIG.gameplay.targetScreenRatio,
     descentSpeed: 0,
-    depthRate: CONFIG.gameplay.shortfinDepthRate,
+    // 기본값은 고고다이버 프리셋으로 초기화
+    depthRate: CONFIG.gameplay.characterSettings.shortfin.depthRate,
     spawnTimer: 0,
-    spawnInterval: CONFIG.gameplay.spawnMin,
+    spawnInterval: CONFIG.gameplay.characterSettings.shortfin.spawnMin,
+    playerSpeed: CONFIG.gameplay.characterSettings.shortfin.playerSpeed,
+    difficultyPreset: CONFIG.gameplay.characterSettings.shortfin,
 
     // Start a new game session
     start(character) {
@@ -932,9 +1280,11 @@
       this.time = 0;
       this.lastFrame = performance.now();
       this.spawnTimer = 0;
-      this.spawnInterval = getSpawnInterval(this.depth, this.time);
-      // 캐릭터 선택에 따른 하강/수심 속도 적용
-      this.depthRate = character === "longfin" ? CONFIG.gameplay.longfinDepthRate : CONFIG.gameplay.shortfinDepthRate;
+      // 캐릭터 난이도 프리셋 적용
+      this.difficultyPreset = getCharacterPreset(character);
+      this.spawnInterval = getSpawnInterval(this.depth, this.time, this.difficultyPreset);
+      this.depthRate = this.difficultyPreset.depthRate;
+      this.playerSpeed = this.difficultyPreset.playerSpeed;
       this.descentSpeed = this.depthRate * CONFIG.gameplay.pixelsPerMeter;
 
       // 카메라 및 플레이어 위치 초기화
@@ -1009,7 +1359,7 @@
         state.facing = direction > 0 ? 1 : -1;
       }
       state.moving = direction !== 0;
-      this.player.x += direction * CONFIG.gameplay.playerSpeed * delta;
+      this.player.x += direction * this.playerSpeed * delta;
       this.player.x = clamp(this.player.x, 0, this.size.width - this.player.width);
 
       // 배경 버블 이동 업데이트
@@ -1032,7 +1382,7 @@
       if (this.spawnTimer >= this.spawnInterval) {
         this.spawnTimer = 0;
         // 수심이 깊어질수록 스폰 간격을 줄여 난이도 상승
-        this.spawnInterval = getSpawnInterval(this.depth, this.time);
+        this.spawnInterval = getSpawnInterval(this.depth, this.time, this.difficultyPreset);
         this.spawnObstacle();
       }
 
@@ -1147,6 +1497,17 @@
 
     setActiveScreen("result");
     DOM.finalDepth.textContent = formatDepth(depth);
+    // 합격/탈락 메시지 갱신
+    const isSuccess = depth >= CONFIG.gameplay.targetDepth - 0.01;
+    DOM.resultMessage.classList.toggle("is-success", isSuccess);
+    DOM.resultMessage.classList.toggle("is-fail", !isSuccess);
+    DOM.resultHeadline.textContent = isSuccess ? "축하합니다!" : "초급 시험 탈락!";
+    // 강조 문구는 스팬으로 감싸 스타일 적용
+    DOM.resultSubline.innerHTML = isSuccess
+      ? "프리다이빙 초급 기준인 <span class=\"result-highlight\">수심 10M에 합격</span>하셨습니다."
+      : "<span class=\"result-highlight\">무제한 무료 코칭반</span>을 이용하여 꾸준히 연습하세요.";
+    // 합격 시에만 하단 문구 표시
+    DOM.resultFooter.textContent = isSuccess ? "다음 스테이지는 실제 잠수풀에서!" : "";
 
     DOM.leaderboardStatus.textContent = "저장 중...";
 
@@ -1155,7 +1516,8 @@
       name: state.player.name,
       phone: state.player.phone,
       depth: Number(depth.toFixed(2)),
-      character: state.character,
+      // 서버에는 영문 키로 저장
+      character: getCharacterStorageKey(state.character),
     };
 
     try {
@@ -1185,10 +1547,27 @@
 
   // Start a new game session from UI state
   function startGame() {
-    DOM.hudCharacter.textContent = getCharacterLabel(state.character);
+    if (DOM.hudCharacter) {
+      // 레거시 HUD가 있을 경우만 캐릭터 라벨 갱신
+      DOM.hudCharacter.textContent = getCharacterLabel(state.character);
+    }
     DOM.hudDepth.textContent = formatDepth(0);
     setActiveScreen("game");
     resizeCanvas(game);
+    // 게임 화면 진입 시에는 시작 오버레이를 노출하고 대기
+    DOM.gameStartOverlay.classList.add("is-visible");
+    // 시작 전에는 터치 컨트롤 비활성화
+    DOM.touchControls?.classList.add("is-disabled");
+  }
+
+  // 실제 게임 루프를 시작하는 핸들러
+  function beginGamePlay() {
+    if (!state.character) {
+      showToast("캐릭터를 선택해 주세요.");
+      return;
+    }
+    DOM.gameStartOverlay.classList.remove("is-visible");
+    DOM.touchControls?.classList.remove("is-disabled");
     game.start(state.character);
   }
 
@@ -1251,6 +1630,11 @@
         return;
       }
       startGame();
+    });
+
+    DOM.btnGameStart.addEventListener("click", () => {
+      // START 버튼을 눌러야 게임이 시작됨
+      beginGamePlay();
     });
 
     DOM.btnRetry.addEventListener("click", () => {

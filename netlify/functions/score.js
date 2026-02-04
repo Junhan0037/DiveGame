@@ -33,6 +33,15 @@ function validatePayload(payload) {
   const depth = Number(payload.depth);
   const character = payload.character;
 
+  // 기존/신규 캐릭터 키를 모두 수용하고 영문 키로 통일 저장
+  const characterMap = {
+    longfin: "prini",
+    shortfin: "gogodiver",
+    prini: "prini",
+    gogodiver: "gogodiver",
+  };
+  const normalizedCharacter = characterMap[character];
+
   if (!name) {
     return { error: "name required" };
   }
@@ -42,7 +51,7 @@ function validatePayload(payload) {
   if (!Number.isFinite(depth) || depth <= 0 || depth > 9999) {
     return { error: "depth invalid" };
   }
-  if (character !== "longfin" && character !== "shortfin") {
+  if (!normalizedCharacter) {
     return { error: "character invalid" };
   }
 
@@ -51,7 +60,7 @@ function validatePayload(payload) {
       name,
       phone,
       depth: Number(depth.toFixed(2)),
-      character,
+      character: normalizedCharacter,
     },
   };
 }

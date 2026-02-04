@@ -5,6 +5,10 @@
   --bg-deep: #0f3f73;
   --bg-mid: #1f78b5;
   --bg-shallow: #3cc1d8;
+  /* 인트로/캐릭터 화면용 다크 배경 톤 */
+  --bg-dark-1: #05080d;
+  --bg-dark-2: #0b1622;
+  --bg-dark-3: #0f2436;
   --accent: #f2c14e;
   --danger: #e4572e;
   --text: #e9f1f7;
@@ -48,6 +52,11 @@ body {
   min-height: 100vh;
 }
 
+/* 입력/캐릭터 화면 전용 다크 배경 */
+body.body-dark {
+  background: radial-gradient(circle at 30% 15%, var(--bg-dark-2), var(--bg-dark-1) 55%, #000 100%);
+}
+
 button,
 input {
   font-family: inherit;
@@ -78,6 +87,19 @@ input {
   display: flex;
 }
 
+/* 인트로 화면: 로고 + 패널을 세로 정렬 */
+#screen-intro {
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 결과 화면: 메시지/패널/하단 문구를 세로 정렬 */
+#screen-result {
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+}
+
 .panel {
   width: 100%;
   max-width: var(--max-width);
@@ -88,10 +110,32 @@ input {
   box-shadow: 0 18px 30px var(--shadow);
 }
 
+/* 첫 화면 로고 정렬 및 크기 */
+.intro-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.intro-logo img {
+  /* 로고 시각적 존재감 강화 */
+  width: min(280px, 70vw);
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.4));
+}
+
 .title {
   margin: 0 0 8px;
   font-size: 32px;
   letter-spacing: 1px;
+}
+
+/* 결과 화면 타이틀 전용 중앙 정렬 */
+.result-title {
+  text-align: center;
+  font-size: 24px;
 }
 
 .subtitle {
@@ -114,7 +158,8 @@ input {
 }
 
 .field-label {
-  font-size: 16px;
+  /* 입력 라벨 텍스트 크기 축소 */
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -130,7 +175,8 @@ input[type="tel"] {
   border: 2px solid var(--border);
   background: rgba(8, 18, 28, 0.8);
   color: var(--text);
-  font-size: 18px;
+  /* 입력 텍스트 크기 축소 */
+  font-size: 16px;
 }
 
 input:focus {
@@ -142,12 +188,14 @@ input:focus {
   display: flex;
   gap: 10px;
   align-items: center;
-  font-size: 14px;
+  /* 동의 문구 텍스트 크기 축소 */
+  font-size: 12px;
 }
 
 .consent-desc {
   margin: 0;
-  font-size: 12px;
+  /* 보조 설명 텍스트 크기 축소 */
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -260,30 +308,27 @@ input:focus {
   justify-content: flex-start;
 }
 
-.hud {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 12px;
+/* 좌측 상단 수심 단일 표시 */
+.hud-simple {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
 }
 
-.hud-item {
-  background: rgba(7, 18, 28, 0.7);
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 10px;
-  text-align: center;
-}
-
-.hud-label {
-  display: block;
-  font-size: 12px;
+.hud-depth-label {
+  font-size: 14px;
   color: var(--muted);
-  margin-bottom: 4px;
 }
 
-.hud-value {
-  font-size: 18px;
+.hud-depth {
+  font-size: 20px;
+  color: var(--text);
+  letter-spacing: 0.5px;
 }
 
 .game-area {
@@ -297,6 +342,23 @@ input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 게임 시작 오버레이: 중앙 START 버튼 배치 */
+.game-start-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  /* 터치 컨트롤 영역을 제외한 캔버스 중앙에 정렬 */
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 2;
+}
+
+.game-start-overlay.is-visible {
+  display: flex;
 }
 
 #game-canvas {
@@ -325,6 +387,12 @@ input:focus {
   touch-action: none;
 }
 
+/* 게임 시작 전 터치 컨트롤 비활성화 */
+.touch-controls.is-disabled {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
 /* ===== 결과/랭킹 ===== */
 .final-depth {
   font-size: 40px;
@@ -333,11 +401,61 @@ input:focus {
   text-align: center;
 }
 
+/* 결과/랭킹 화면 메시지 */
+.result-message {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  text-align: center;
+  width: 100%;
+  max-width: var(--max-width);
+}
+
+.result-headline {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0.5px;
+}
+
+.result-subline {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.result-highlight {
+  /* 결과 메시지 핵심 문구 강조 */
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.result-message.is-success .result-headline {
+  color: var(--accent);
+}
+
+.result-message.is-fail .result-headline {
+  color: var(--danger);
+}
+
+.result-footer {
+  margin: 16px 0 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--accent);
+  width: 100%;
+  max-width: var(--max-width);
+}
+
 .leaderboard {
   border: 2px solid var(--border);
   border-radius: 14px;
   padding: 14px;
   background: rgba(7, 18, 28, 0.7);
+  /* 결과 화면에서 랭킹 영역을 내부 스크롤 컨테이너로 제한 */
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, 40vh);
 }
 
 .leaderboard-header {
@@ -358,6 +476,11 @@ input:focus {
   padding: 0;
   display: grid;
   gap: 8px;
+  /* TOP 10 리스트 스크롤 처리 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
 
 .leaderboard-list li {
@@ -368,6 +491,13 @@ input:focus {
   padding: 6px 10px;
   border-radius: 10px;
   background: rgba(9, 27, 40, 0.8);
+}
+
+/* 랭킹이 없을 때 문구가 한 줄로 보이도록 전체 열 차지 */
+.leaderboard-list li.leaderboard-empty {
+  grid-template-columns: 1fr;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .leaderboard-list li.is-highlight {
@@ -406,5 +536,25 @@ input:focus {
 
   .actions {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 작은 화면에서 캐릭터 설명 줄바꿈 최소화 */
+@media (max-width: 420px) {
+  .card-content {
+    gap: 10px;
+  }
+
+  .card-canvas {
+    width: 72px;
+    height: 72px;
+  }
+
+  .card p {
+    font-size: 12px;
+    /* 한 줄 유지 + 넘침 시 말줄임 처리 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
