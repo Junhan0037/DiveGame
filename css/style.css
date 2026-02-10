@@ -132,6 +132,11 @@ input {
   letter-spacing: 1px;
 }
 
+/* 시작 화면 제목은 줄바꿈 방지를 위해 별도 크기로 축소 */
+#intro-title {
+  font-size: 28px;
+}
+
 /* 결과 화면 타이틀 전용 중앙 정렬 */
 .result-title {
   text-align: center;
@@ -321,12 +326,14 @@ input:focus {
 }
 
 .hud-depth-label {
-  font-size: 14px;
+  /* 현재 수심 라벨 가독성 강화 */
+  font-size: 18px;
   color: var(--muted);
 }
 
 .hud-depth {
-  font-size: 20px;
+  /* 실시간 수심 수치는 HUD에서 가장 눈에 띄게 강조 */
+  font-size: 30px;
   color: var(--text);
   letter-spacing: 0.5px;
 }
