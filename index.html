@@ -45,7 +45,7 @@
           </label>
           <label class="field">
             <span class="field-label">연락처</span>
-            <input id="player-phone" name="phone" type="tel" autocomplete="tel" maxlength="20" placeholder="01012345678" required>
+            <input id="player-phone" name="phone" type="tel" autocomplete="tel" maxlength="13" placeholder="010-1234-5678" required>
           </label>
           <label class="consent">
             <input id="player-consent" type="checkbox" required>
@@ -101,6 +101,15 @@
         <div class="hud-simple">
           <span class="hud-depth-label">현재 수심</span>
           <span id="hud-depth" class="hud-depth">0.0m</span>
+        </div>
+        <!-- 게임 HUD: 게임 영역 안 우측 상단 목숨 표시 -->
+        <div class="hud-lives" aria-live="polite">
+          <span class="hud-lives-label">목숨</span>
+          <span id="hud-lives" class="hud-lives-value">❤ x2</span>
+        </div>
+        <!-- 피격 피드백: 목숨 차감 시 잠깐 노출 -->
+        <div id="life-loss-indicator" class="life-loss-indicator" role="status" aria-live="polite">
+          목숨 -1
         </div>
         <canvas id="game-canvas" width="360" height="640" aria-label="게임 캔버스"></canvas>
         <!-- 게임 시작 오버레이: 화면 진입 후 시작 버튼 노출 -->

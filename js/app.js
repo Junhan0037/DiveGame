@@ -18,7 +18,9 @@
     btnToGame: document.getElementById("btn-to-game"),
     characterCards: document.querySelectorAll(".card"),
     hudDepth: document.getElementById("hud-depth"),
+    hudLives: document.getElementById("hud-lives"),
     hudCharacter: document.getElementById("hud-character"),
+    lifeLossIndicator: document.getElementById("life-loss-indicator"),
     canvas: document.getElementById("game-canvas"),
     gameStartOverlay: document.getElementById("game-start-overlay"),
     btnGameStart: document.getElementById("btn-game-start"),
@@ -60,6 +62,14 @@
       startScreenRatio: 0.18,
       targetScreenRatio: 0.35,
       maxQueue: 20,
+      // 목숨 시스템 기본값
+      maxLives: 2,
+      // 충돌 직후 연속 차감 방지 무적 시간(초)
+      hitInvincibilitySeconds: 0.8,
+      // 포션 고정 등장 수심(총 5개)
+      potionMilestones: [5, 10, 15, 20, 30],
+      // 목숨 감소 안내 표시 시간(ms)
+      lifeLossIndicatorMs: 900,
       // 캐릭터별 난이도 프리셋(롱핀=프린이, 숏핀=고고다이버)
       characterSettings: {
         longfin: {
@@ -91,12 +101,12 @@
       // 고고다이버가 5m를 넘기면 즉시 난이도 급상승
       gogodiverBoost: {
         depthThreshold: 5,
-        // 5m 이후에는 장애물이 훨씬 빠르게 생성되도록 간격을 크게 축소
-        spawnMinMultiplier: 0.24,
-        spawnMaxMultiplier: 0.3,
-        // 깊이/시간 스케일도 함께 줄여 체감 난이도를 급격히 상승
-        depthScaleMultiplier: 0.3,
-        timeScaleMultiplier: 0.4,
+        // 5m 이후 난이도를 더 공격적으로 올리도록 계수 추가 강화
+        spawnMinMultiplier: 0.2,
+        spawnMaxMultiplier: 0.25,
+        // 깊이/시간 스케일을 더 낮춰 장애물 밀도를 빠르게 끌어올림
+        depthScaleMultiplier: 0.24,
+        timeScaleMultiplier: 0.32,
       },
       // 30m 이후 전체 난이도 급상승(루즈함 방지)
       depthSpike: {
@@ -123,6 +133,8 @@
     facing: 1,
     // 캐릭터 이동 여부
     moving: false,
+    // 목숨 감소 알림 타이머(중복 노출 제어)
+    lifeLossTimerId: 0,
   };
 
   // Input flags for continuous movement
@@ -169,6 +181,8 @@
     if (screenId !== "game") {
       DOM.gameStartOverlay.classList.remove("is-visible");
       DOM.touchControls?.classList.remove("is-disabled");
+      // 게임 화면 이탈 시 피격 알림 잔상 제거
+      hideLifeLossIndicator();
     }
     // 캐릭터 선택 화면 노출 시 미리보기 캔버스 동기화
     if (screenId === "character") {
@@ -188,9 +202,16 @@
     return (name || "").trim().slice(0, 20);
   }
 
-  // Normalize phone input to digits + hyphen only
+  // Normalize phone input and format to 000-0000-0000 pattern
   function normalizePhone(phone) {
-    return (phone || "").trim().replace(/[^0-9-]/g, "");
+    const digits = (phone || "").replace(/[^0-9]/g, "").slice(0, 11);
+    if (digits.length <= 3) {
+      return digits;
+    }
+    if (digits.length <= 7) {
+      return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    }
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }
 
   // Validate player form inputs before moving to next step
@@ -217,6 +238,43 @@
   // Format depth value for UI display
   function formatDepth(depth) {
     return `${depth.toFixed(1)}m`;
+  }
+
+  // HUD 목숨 텍스트 포맷(아이콘 + 숫자)
+  function formatLives(lives) {
+    return `❤ x${Math.max(0, lives)}`;
+  }
+
+  // 우측 상단 목숨 HUD를 현재 상태로 갱신
+  function updateHudLives(lives) {
+    if (!DOM.hudLives) {
+      return;
+    }
+    DOM.hudLives.textContent = formatLives(lives);
+  }
+
+  // 피격 알림을 즉시 숨기고 타이머를 정리
+  function hideLifeLossIndicator() {
+    if (state.lifeLossTimerId) {
+      window.clearTimeout(state.lifeLossTimerId);
+      state.lifeLossTimerId = 0;
+    }
+    DOM.lifeLossIndicator?.classList.remove("is-visible", "is-gain");
+  }
+
+  // 목숨 변화 알림을 상단 오버레이로 잠깐 표시(감소/회복 공용)
+  function showLifeIndicator(message, isGain = false) {
+    if (!DOM.lifeLossIndicator) {
+      return;
+    }
+    hideLifeLossIndicator();
+    DOM.lifeLossIndicator.textContent = message;
+    DOM.lifeLossIndicator.classList.toggle("is-gain", isGain);
+    DOM.lifeLossIndicator.classList.add("is-visible");
+    state.lifeLossTimerId = window.setTimeout(() => {
+      DOM.lifeLossIndicator.classList.remove("is-visible", "is-gain");
+      state.lifeLossTimerId = 0;
+    }, CONFIG.gameplay.lifeLossIndicatorMs);
   }
 
   // Convert character id to readable label
@@ -396,6 +454,12 @@
     if (type === "eel") {
       width = base * 0.32;
       height = base * 0.12;
+    }
+
+    if (type === "potion") {
+      // 포션은 눈에 잘 띄도록 폭 대비 세로 비율을 조금 더 크게 설정
+      width = base * 0.16;
+      height = base * 0.21;
     }
 
     const scale = randomInRange(0.85, 1.15);
@@ -1159,6 +1223,45 @@
     ctx.fill();
   }
 
+  // 보라색 회복 포션 렌더링(후광 포함)
+  function drawPotion(ctx, x, y, w, h) {
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.56;
+    const glowRadius = Math.max(w, h) * 0.72;
+
+    // 뒤쪽 글로우로 시인성 확보
+    const glow = ctx.createRadialGradient(cx, cy, glowRadius * 0.18, cx, cy, glowRadius);
+    glow.addColorStop(0, "rgba(237, 178, 255, 0.72)");
+    glow.addColorStop(0.55, "rgba(169, 78, 255, 0.32)");
+    glow.addColorStop(1, "rgba(130, 45, 214, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 병 본체
+    ctx.fillStyle = "#7d3ed1";
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.2, y + h * 0.34);
+    ctx.lineTo(x + w * 0.8, y + h * 0.34);
+    ctx.lineTo(x + w * 0.72, y + h * 0.9);
+    ctx.lineTo(x + w * 0.28, y + h * 0.9);
+    ctx.closePath();
+    ctx.fill();
+
+    // 병 목 부분/마개
+    ctx.fillStyle = "#a073f2";
+    ctx.fillRect(x + w * 0.38, y + h * 0.2, w * 0.24, h * 0.14);
+    ctx.fillStyle = "#e8d6ff";
+    ctx.fillRect(x + w * 0.34, y + h * 0.12, w * 0.32, h * 0.08);
+
+    // 액체 하이라이트
+    ctx.fillStyle = "rgba(236, 217, 255, 0.7)";
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.42, y + h * 0.58, w * 0.1, h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // 월드 좌표를 화면 좌표로 변환해 장애물 렌더링
   function drawObstacles(ctx, obstacles, cameraY, size) {
     obstacles.forEach((obstacle) => {
@@ -1194,6 +1297,10 @@
 
       if (obstacle.type === "eel") {
         drawEel(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
+      }
+
+      if (obstacle.type === "potion") {
+        drawPotion(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
       }
     });
   }
@@ -1240,6 +1347,7 @@
       ray: 0.2,
       urchin: 0.15,
       eel: 0.25,
+      potion: 0.22,
     };
     const shrink = shrinkMap[obstacle.type] ?? 0.2;
     const marginX = obstacle.width * shrink;
@@ -1284,6 +1392,12 @@
     spawnInterval: CONFIG.gameplay.characterSettings.shortfin.spawnMin,
     playerSpeed: CONFIG.gameplay.characterSettings.shortfin.playerSpeed,
     difficultyPreset: CONFIG.gameplay.characterSettings.shortfin,
+    // 목숨/피격 상태
+    lives: CONFIG.gameplay.maxLives,
+    // 포션 수심 마일스톤 인덱스(최대 5개)
+    potionMilestoneIndex: 0,
+    invincibleUntilTime: 0,
+    hitFlashUntilTime: 0,
 
     // Start a new game session
     start(character) {
@@ -1295,6 +1409,11 @@
       this.time = 0;
       this.lastFrame = performance.now();
       this.spawnTimer = 0;
+      // 목숨 시스템 초기화(새 게임은 항상 2 목숨)
+      this.lives = CONFIG.gameplay.maxLives;
+      this.potionMilestoneIndex = 0;
+      this.invincibleUntilTime = 0;
+      this.hitFlashUntilTime = 0;
       // 캐릭터 난이도 프리셋 적용
       this.difficultyPreset = getCharacterPreset(character);
       this.spawnInterval = getSpawnInterval(this.depth, this.time, this.difficultyPreset);
@@ -1311,6 +1430,9 @@
       this.player.y = this.startScreenY;
       state.facing = 1;
       state.moving = false;
+      hideLifeLossIndicator();
+      DOM.hudDepth.textContent = formatDepth(0);
+      updateHudLives(this.lives);
 
       this.loop();
     },
@@ -1321,9 +1443,10 @@
     },
 
     // Spawn a new obstacle at random x position
-    spawnObstacle() {
+    spawnObstacle(forcedType = null) {
       // 캐릭터 하강 방향(아래) 기준으로 화면 하단에 생성
-      const type = pickObstacleType();
+      // 강제 타입이 없으면 기존 위험 장애물만 선택
+      const type = forcedType || pickObstacleType();
       const size = getObstacleSize(type, this.size);
       const margin = Math.max(8, this.size.width * 0.04);
       let placed = false;
@@ -1356,8 +1479,9 @@
 
       if (!placed) {
         // 겹침 방지를 위해 이번 스폰을 스킵
-        return;
+        return false;
       }
+      return true;
     },
 
     // Update positions, depth, and collision per frame
@@ -1366,6 +1490,20 @@
       this.depth += this.depthRate * delta;
       // 애니메이션 시간 누적
       this.time += delta;
+
+      // 지정 수심(5/10/15/20/30m) 도달 시 포션을 1개씩만 생성
+      while (this.potionMilestoneIndex < CONFIG.gameplay.potionMilestones.length) {
+        const threshold = CONFIG.gameplay.potionMilestones[this.potionMilestoneIndex];
+        if (this.depth < threshold) {
+          break;
+        }
+        const spawned = this.spawnObstacle("potion");
+        if (!spawned) {
+          // 겹침 등으로 실패하면 다음 프레임에 같은 마일스톤 재시도
+          break;
+        }
+        this.potionMilestoneIndex += 1;
+      }
 
       // 좌/우 이동 처리
       const direction = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -1406,7 +1544,8 @@
         (obstacle) => obstacle.worldY - this.cameraY + obstacle.height > -80
       );
 
-      for (const obstacle of this.obstacles) {
+      for (let index = 0; index < this.obstacles.length; index += 1) {
+        const obstacle = this.obstacles[index];
         const obstacleScreenY = obstacle.worldY - this.cameraY;
 
         if (obstacleScreenY > this.size.height + 80 || obstacleScreenY + obstacle.height < -80) {
@@ -1418,8 +1557,33 @@
         const obstacleHitbox = getObstacleHitbox(obstacle, obstacleScreenY);
 
         if (rectsIntersect(playerHitbox, obstacleHitbox)) {
-          this.running = false;
-          handleGameOver(this.depth);
+          if (obstacle.type === "potion") {
+            // 포션 획득 시 목숨을 1 회복(상한 제한 없음)
+            this.lives += 1;
+            updateHudLives(this.lives);
+            showLifeIndicator("목숨 +1", true);
+            // 같은 포션을 재획득하지 않도록 즉시 제거
+            this.obstacles.splice(index, 1);
+            break;
+          }
+
+          // 무적 시간에는 같은 프레임/연속 충돌 차감을 방지
+          if (this.time < this.invincibleUntilTime) {
+            continue;
+          }
+
+          // 충돌 시 목숨 1 감소 + 피격 상태(무적/깜빡임) 시작
+          this.lives = Math.max(0, this.lives - 1);
+          this.invincibleUntilTime = this.time + CONFIG.gameplay.hitInvincibilitySeconds;
+          this.hitFlashUntilTime = this.invincibleUntilTime;
+          updateHudLives(this.lives);
+          showLifeIndicator("목숨 -1");
+
+          if (this.lives <= 0) {
+            this.running = false;
+            handleGameOver(this.depth);
+          }
+          // 한 프레임에는 한 번의 피격만 처리
           break;
         }
       }
@@ -1429,7 +1593,12 @@
     render() {
       drawBackground(this.ctx, this.size, this.bubbles);
       drawObstacles(this.ctx, this.obstacles, this.cameraY, this.size);
-      drawPlayer(this.ctx, this.player, state.character, state.facing, state.moving, this.time);
+      // 피격 직후에는 캐릭터를 깜빡여 무적 상태를 직관적으로 전달
+      const isHitFlashing = this.time < this.hitFlashUntilTime;
+      const blinkVisible = !isHitFlashing || Math.floor(this.time * 14) % 2 === 0;
+      if (blinkVisible) {
+        drawPlayer(this.ctx, this.player, state.character, state.facing, state.moving, this.time);
+      }
     },
 
     // Main loop driven by requestAnimationFrame
@@ -1445,6 +1614,7 @@
       this.update(delta);
       this.render();
 
+      // 매 프레임 수심 HUD를 최신 값으로 동기화
       DOM.hudDepth.textContent = formatDepth(this.depth);
       requestAnimationFrame(this.loop.bind(this));
     },
@@ -1566,7 +1736,10 @@
       // 레거시 HUD가 있을 경우만 캐릭터 라벨 갱신
       DOM.hudCharacter.textContent = getCharacterLabel(state.character);
     }
+    // 게임 진입 시 HUD는 기본값(수심 0, 목숨 2)으로 선반영
     DOM.hudDepth.textContent = formatDepth(0);
+    updateHudLives(CONFIG.gameplay.maxLives);
+    hideLifeLossIndicator();
     setActiveScreen("game");
     resizeCanvas(game);
     // 게임 화면 진입 시에는 시작 오버레이를 노출하고 대기
@@ -1604,6 +1777,11 @@
 
   // Setup event handlers for form and screen transitions
   function bindUI() {
+    // 연락처 입력 중 하이픈을 자동 삽입해 000-0000-0000 형식 유지
+    DOM.phoneInput.addEventListener("input", () => {
+      DOM.phoneInput.value = normalizePhone(DOM.phoneInput.value);
+    });
+
     DOM.form.addEventListener("submit", (event) => {
       event.preventDefault();
 
