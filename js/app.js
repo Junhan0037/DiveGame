@@ -88,13 +88,15 @@
           difficultyTimeScale: 40,
         },
       },
-      // 고고다이버가 10m를 넘기면 즉시 난이도 급상승
+      // 고고다이버가 5m를 넘기면 즉시 난이도 급상승
       gogodiverBoost: {
-        depthThreshold: 10,
-        spawnMinMultiplier: 0.32,
-        spawnMaxMultiplier: 0.38,
-        depthScaleMultiplier: 0.38,
-        timeScaleMultiplier: 0.5,
+        depthThreshold: 5,
+        // 5m 이후에는 장애물이 훨씬 빠르게 생성되도록 간격을 크게 축소
+        spawnMinMultiplier: 0.24,
+        spawnMaxMultiplier: 0.3,
+        // 깊이/시간 스케일도 함께 줄여 체감 난이도를 급격히 상승
+        depthScaleMultiplier: 0.3,
+        timeScaleMultiplier: 0.4,
       },
       // 30m 이후 전체 난이도 급상승(루즈함 방지)
       depthSpike: {
@@ -294,7 +296,7 @@
 
   // 수심과 경과 시간을 함께 반영해 난이도를 더 빠르게 상승
   function getSpawnInterval(depth, time, preset) {
-    // 고고다이버는 10m 초과 시 난이도 보정 적용
+    // 고고다이버는 5m 초과 시 난이도 보정 적용
     const tunedPreset = applyGogodiverBoost(depth, preset);
     // 30m 이후에는 모든 캐릭터 난이도를 추가로 급상승
     const spikedPreset = applyDepthSpike(depth, tunedPreset);
@@ -317,7 +319,7 @@
     return CONFIG.gameplay.characterSettings[character] || CONFIG.gameplay.characterSettings.shortfin;
   }
 
-  // 고고다이버 10m 이후 난이도 급상승 보정
+  // 고고다이버 5m 이후 난이도 급상승 보정
   function applyGogodiverBoost(depth, preset) {
     const boost = CONFIG.gameplay.gogodiverBoost;
     if (preset.storageKey !== "gogodiver" || depth < boost.depthThreshold) {
@@ -348,7 +350,7 @@
   }
 
   // 바다 장애물 타입 목록
-  const OBSTACLE_TYPES = ["rock", "coral", "seaweed", "jellyfish", "shark", "ray", "urchin", "eel"];
+  const OBSTACLE_TYPES = ["rock", "coral", "jellyfish", "shark", "ray", "urchin", "eel"];
 
   // 장애물 타입을 무작위로 선택
   function pickObstacleType() {
@@ -369,11 +371,6 @@
     if (type === "coral") {
       width = base * 0.16;
       height = base * 0.2;
-    }
-
-    if (type === "seaweed") {
-      width = base * 0.14;
-      height = base * 0.28;
     }
 
     if (type === "jellyfish") {
@@ -588,7 +585,7 @@
     });
   }
 
-  // 다이버 캐릭터(롱핀/숏핀)를 데이브 더 다이버 감성의 스타일로 렌더링(하강 방향)
+  // 다이버 캐릭터(롱핀/숏핀)를 하강 포즈로 렌더링
   function drawPlayer(ctx, player, character, facing, moving, time) {
     const x = player.x;
     const y = player.y;
@@ -598,29 +595,29 @@
     const isPrini = character === "longfin";
     const isGogodiver = character === "shortfin";
 
-    // 캐릭터별 컬러/무드 분리(프린이=허술, 고고다이버=프로)
+    // 캐릭터별 컬러/무드 분리(프린이=입문형, 고고다이버=모던 프리다이버)
     const palette = isGogodiver
       ? {
-          suitBase: "#1b4dbb",
-          suitShade: "#0f2f73",
-          suitHighlight: "#3f8bff",
-          suitAccent: "#f2c14e",
-          maskFrame: "#ffd45a",
-          maskShade: "#f0b83a",
+          suitBase: "#0f2a3a",
+          suitShade: "#091d29",
+          suitHighlight: "#1f465f",
+          suitAccent: "#29d4d9",
+          maskFrame: "#152531",
+          maskShade: "#0f1b24",
           skinTone: "#f3c9a3",
-          beard: "#3b2b25",
-          visor: "#7fd9ff",
-          visorHighlight: "rgba(255, 255, 255, 0.6)",
-          tankMain: "#ffcc4d",
-          tankShade: "#e2a93a",
-          strap: "#0f1115",
-          glove: "#0f1115",
-          boot: "#0b121a",
+          beard: "#2e201a",
+          visor: "#9feeff",
+          visorHighlight: "rgba(255, 255, 255, 0.5)",
+          tankMain: "#738693",
+          tankShade: "#546470",
+          strap: "#0b1218",
+          glove: "#0b1218",
+          boot: "#0d1922",
           hair: "#2a1d18",
-          finMain: "#ff6a2c",
-          finShade: "#cc4d1f",
+          finMain: "#2fc6ff",
+          finShade: "#1488b8",
           outline: "rgba(6, 12, 20, 0.7)",
-          hose: "#ff5a3b",
+          hose: "#7a8f9f",
         }
       : {
           suitBase: "#2b3a45",
@@ -699,7 +696,7 @@
     // 애니메이션 파라미터(핀/팔/다리 수영 동작)
     const finSwing = Math.sin(time * 9) * h * 0.02;
     const swimPhase = time * 8.2;
-    const swimIntensity = (moving ? 1 : 0.45) * (isPrini ? 0.85 : 1.1);
+    const swimIntensity = (moving ? 1 : 0.45) * (isPrini ? 0.85 : 1.05);
     const armSwing = Math.cos(swimPhase) * h * 0.04 * swimIntensity;
     const armReach = Math.sin(swimPhase) * w * 0.07 * swimIntensity;
     const armOut = Math.abs(armSwing) * 0.6;
@@ -709,31 +706,33 @@
 
     // 헤드라이트 연출은 제거(요청 사항)
 
-    // 핀 길이/크기 차이로 캐릭터 성격 대비
-    const finHeight = isPrini ? h * 0.16 : h * 0.26;
-    const finWidth = w * (isPrini ? 0.18 : 0.24);
-    const finY = y + h * 0.02 + finSwing + legKick * 0.25 + (isPrini ? h * 0.015 : 0);
-    const finSpread = legSpread * (isPrini ? 0.5 : 0.9);
+    // 고고다이버는 롱핀 실루엣으로 프리다이버 인상을 강화
+    const finHeight = isPrini ? h * 0.16 : h * 0.34;
+    const finWidth = w * (isPrini ? 0.18 : 0.2);
+    const finY = y + h * 0.02 + finSwing + legKick * 0.25 + (isPrini ? h * 0.015 : -h * 0.01);
+    const finSpread = legSpread * (isPrini ? 0.5 : 0.72);
     const leftFinX = drawX + w * 0.14 - finSpread * 0.4 + clumsyWobble * 0.2;
     const rightFinX = drawX + w * 0.64 + finSpread * 0.4 - clumsyWobble * 0.2;
 
-    // 데이브 특유의 통통한 핀 형태를 폴리곤으로 표현
+    // 핀 타입별 형태 차이(프린이: 짧고 넓음, 고고다이버: 길고 뾰족함)
     const leftFinHeight = isPrini ? finHeight * 0.7 : finHeight;
     const rightFinHeight = finHeight;
+    const finTipRatio = isPrini ? 0.82 : 0.9;
+    const finRootRatio = isPrini ? 0.18 : 0.1;
     ctx.fillStyle = isPrini ? finShade : finMain;
     ctx.beginPath();
     ctx.moveTo(leftFinX, finY);
     ctx.lineTo(leftFinX + finWidth, finY);
-    ctx.lineTo(leftFinX + finWidth * 0.82, finY + leftFinHeight);
-    ctx.lineTo(leftFinX + finWidth * 0.18, finY + leftFinHeight);
+    ctx.lineTo(leftFinX + finWidth * finTipRatio, finY + leftFinHeight);
+    ctx.lineTo(leftFinX + finWidth * finRootRatio, finY + leftFinHeight);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = finMain;
     ctx.beginPath();
     ctx.moveTo(rightFinX, finY);
     ctx.lineTo(rightFinX + finWidth, finY);
-    ctx.lineTo(rightFinX + finWidth * 0.82, finY + rightFinHeight);
-    ctx.lineTo(rightFinX + finWidth * 0.18, finY + rightFinHeight);
+    ctx.lineTo(rightFinX + finWidth * finTipRatio, finY + rightFinHeight);
+    ctx.lineTo(rightFinX + finWidth * finRootRatio, finY + rightFinHeight);
     ctx.closePath();
     ctx.fill();
     // 핀 스트랩/톤 분리로 입체감 강조
@@ -751,9 +750,9 @@
     const leftLegX = drawX + w * 0.24 - legSpread - legOut + clumsyWobble * 0.2;
     const rightLegX = drawX + w * 0.6 + legSpread + legOut - clumsyWobble * 0.2;
     const legY = y + h * 0.22 + finSwing * 0.4 + postureShift;
-    const legW = w * 0.16;
-    const thighH = h * 0.11;
-    const calfH = h * 0.1;
+    const legW = w * (isPrini ? 0.16 : 0.13);
+    const thighH = h * (isPrini ? 0.11 : 0.12);
+    const calfH = h * (isPrini ? 0.1 : 0.12);
     // 허벅지
     ctx.fillRect(leftLegX, legY, legW, thighH);
     ctx.fillRect(rightLegX, legY, legW, thighH);
@@ -761,34 +760,40 @@
     ctx.fillRect(leftLegX, legY + thighH + legKick, legW, calfH);
     ctx.fillRect(rightLegX, legY + thighH - legKick, legW, calfH);
 
-    // 부츠/발끝 강조 - 킥 방향에 따라 위치 오프셋
+    // 프리다이버 발끝은 최소 디테일로 처리해 가볍게 표현
     ctx.fillStyle = boot;
-    ctx.fillRect(leftLegX, legY - h * 0.02 + legKick, legW, h * 0.04);
-    ctx.fillRect(rightLegX, legY - h * 0.02 - legKick, legW, h * 0.04);
-
-    // 산소 탱크(등) - 캐릭터별 크기 차이로 대비
-    const tankW = w * (isPrini ? 0.24 : 0.32);
-    const tankH = h * (isPrini ? 0.22 : 0.3);
-    const tankX = drawX + w * 0.5 - tankW * 0.5 + clumsyWobble * 0.15;
-    const tankY = y + h * 0.26 + postureShift;
-    ctx.fillStyle = tankMain;
-    ctx.fillRect(tankX, tankY, tankW, tankH);
-    ctx.fillStyle = tankShade;
-    ctx.fillRect(tankX, tankY, tankW * 0.28, tankH);
-    // 탱크 스트랩
-    ctx.fillStyle = strap;
-    ctx.fillRect(tankX, tankY + tankH * 0.66, tankW, tankH * 0.12);
-    // 고고다이버 탱크 배지 라인
-    if (isGogodiver) {
-      ctx.fillStyle = suitAccent;
-      ctx.fillRect(tankX + tankW * 0.62, tankY + tankH * 0.18, tankW * 0.28, tankH * 0.1);
+    if (isPrini) {
+      ctx.fillRect(leftLegX, legY - h * 0.02 + legKick, legW, h * 0.04);
+      ctx.fillRect(rightLegX, legY - h * 0.02 - legKick, legW, h * 0.04);
+    } else {
+      ctx.fillRect(leftLegX, legY - h * 0.01 + legKick, legW, h * 0.022);
+      ctx.fillRect(rightLegX, legY - h * 0.01 - legKick, legW, h * 0.022);
     }
 
-    // 몸통(통통한 슈트)
-    const torsoW = w * (isPrini ? 0.56 : 0.62);
-    const torsoH = h * (isPrini ? 0.3 : 0.36);
+    // 몸통(고고다이버는 슬림한 프리다이버 웻수트 비율)
+    const torsoW = w * (isPrini ? 0.56 : 0.54);
+    const torsoH = h * (isPrini ? 0.3 : 0.38);
     const torsoX = drawX + w * 0.5 - torsoW * 0.5 + clumsyWobble * 0.25;
     const torsoY = y + h * 0.33 + postureShift;
+
+    // 프린이는 기존 스쿠버형 탱크를 유지, 고고다이버는 탱크를 제거
+    let tankAnchorX = torsoX + torsoW * 0.8;
+    let tankAnchorY = torsoY + torsoH * 0.2;
+    if (isPrini) {
+      const tankW = w * 0.24;
+      const tankH = h * 0.22;
+      const tankX = drawX + w * 0.5 - tankW * 0.5 + clumsyWobble * 0.15;
+      const tankY = y + h * 0.26 + postureShift;
+      ctx.fillStyle = tankMain;
+      ctx.fillRect(tankX, tankY, tankW, tankH);
+      ctx.fillStyle = tankShade;
+      ctx.fillRect(tankX, tankY, tankW * 0.28, tankH);
+      ctx.fillStyle = strap;
+      ctx.fillRect(tankX, tankY + tankH * 0.66, tankW, tankH * 0.12);
+      tankAnchorX = tankX + tankW * 0.8;
+      tankAnchorY = tankY + tankH * 0.25;
+    }
+
     ctx.fillStyle = suitBase;
     ctx.fillRect(torsoX, torsoY, torsoW, torsoH);
     // 슈트 하이라이트 라인
@@ -798,12 +803,19 @@
     if (isGogodiver) {
       ctx.fillStyle = suitAccent;
       ctx.fillRect(torsoX + torsoW * 0.18, torsoY + torsoH * 0.62, torsoW * 0.64, torsoH * 0.06);
+      // 프리다이버 상징 요소: 가벼운 웨이트 벨트와 웨이트 팩
+      ctx.fillStyle = strap;
+      ctx.fillRect(torsoX + torsoW * 0.12, torsoY + torsoH * 0.52, torsoW * 0.76, torsoH * 0.08);
+      ctx.fillStyle = "rgba(220, 228, 235, 0.62)";
+      ctx.fillRect(torsoX + torsoW * 0.22, torsoY + torsoH * 0.535, torsoW * 0.14, torsoH * 0.055);
+      ctx.fillRect(torsoX + torsoW * 0.64, torsoY + torsoH * 0.535, torsoW * 0.14, torsoH * 0.055);
     }
     // 고고다이버 로고 데칼(가슴 중앙)
     if (isGogodiver && ASSETS.logo.complete && ASSETS.logo.naturalWidth > 0) {
-      const logoSize = torsoW * 0.42;
+      // 기존 부착 방식은 유지하고, 프리다이버 체형에 맞춰 위치만 미세 보정
+      const logoSize = torsoW * 0.36;
       const logoX = torsoX + torsoW * 0.5 - logoSize * 0.5;
-      const logoY = torsoY + torsoH * 0.12;
+      const logoY = torsoY + torsoH * 0.16;
       ctx.drawImage(ASSETS.logo, logoX, logoY, logoSize, logoSize);
     }
 
@@ -812,9 +824,9 @@
     const leftArmX = drawX + w * 0.1 + armReach - armOut + clumsyWobble * 0.2;
     const rightArmX = drawX + w * 0.76 - armReach + armOut - clumsyWobble * 0.2;
     const armY = torsoY + torsoH * 0.18;
-    const armW = w * (isPrini ? 0.12 : 0.14);
-    const upperArmH = h * (isPrini ? 0.1 : 0.11);
-    const lowerArmH = h * (isPrini ? 0.09 : 0.1);
+    const armW = w * (isPrini ? 0.12 : 0.11);
+    const upperArmH = h * (isPrini ? 0.1 : 0.1);
+    const lowerArmH = h * (isPrini ? 0.09 : 0.095);
     // 상완
     ctx.fillRect(leftArmX, armY + armSwing, armW, upperArmH);
     ctx.fillRect(rightArmX, armY - armSwing, armW, upperArmH);
@@ -827,31 +839,35 @@
     ctx.fillRect(rightArmX, armY + upperArmH + lowerArmH - armSwing * 0.4, armW, h * 0.05);
 
     // 마스크 프레임 + 바이저(좌표는 스트랩/레귤레이터에 공유)
-    const maskW = w * (isPrini ? 0.38 : 0.46);
-    const maskH = h * (isPrini ? 0.1 : 0.14);
+    const maskW = w * (isPrini ? 0.38 : 0.36);
+    const maskH = h * (isPrini ? 0.1 : 0.1);
     const maskX = drawX + w * 0.5 - maskW * 0.5 + (isPrini ? w * 0.02 : 0);
-    const maskY = y + h * (isPrini ? 0.71 : 0.68) + postureShift;
+    const maskY = y + h * (isPrini ? 0.71 : 0.695) + postureShift;
 
     // 마스크 스트랩(얼굴 뒤로 감기는 라인)
     ctx.fillStyle = strap;
-    ctx.fillRect(maskX - w * 0.05, maskY + maskH * 0.6, maskW + w * 0.1, h * 0.03);
+    ctx.fillRect(maskX - w * 0.05, maskY + maskH * 0.6, maskW + w * 0.1, isPrini ? h * 0.03 : h * 0.022);
 
     // 얼굴(데이브 특유의 피부 톤과 턱수염)
     const faceCX = drawX + w * 0.5 + clumsyWobble * 0.15;
     const faceCY = y + h * 0.79 + postureShift;
-    // 데이브 느낌의 헤어 실루엣
+    // 고고다이버는 짧은 헤어 실루엣으로 마스크 인상을 강조
+    const hairW = isPrini ? w * 0.44 : w * 0.34;
+    const hairH = isPrini ? h * 0.06 : h * 0.045;
     ctx.fillStyle = hair;
-    ctx.fillRect(faceCX - w * 0.22, faceCY - h * 0.18, w * 0.44, h * 0.06);
+    ctx.fillRect(faceCX - hairW * 0.5, faceCY - h * 0.18, hairW, hairH);
     ctx.fillStyle = skinTone;
     ctx.beginPath();
     ctx.ellipse(faceCX, faceCY, w * 0.2, h * 0.13, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = beard;
-    ctx.beginPath();
-    ctx.ellipse(faceCX, faceCY + h * 0.05, w * 0.2, h * 0.08, 0, 0, Math.PI);
-    ctx.fill();
-    // 턱수염 위 콧수염 포인트
-    ctx.fillRect(faceCX - w * 0.12, faceCY + h * 0.01, w * 0.24, h * 0.03);
+    if (isPrini) {
+      ctx.fillStyle = beard;
+      ctx.beginPath();
+      ctx.ellipse(faceCX, faceCY + h * 0.05, w * 0.2, h * 0.08, 0, 0, Math.PI);
+      ctx.fill();
+      // 턱수염 위 콧수염 포인트
+      ctx.fillRect(faceCX - w * 0.12, faceCY + h * 0.01, w * 0.24, h * 0.03);
+    }
 
     // 마스크 프레임 + 바이저
     ctx.fillStyle = maskFrame;
@@ -863,17 +879,33 @@
     ctx.fillStyle = visorHighlight;
     ctx.fillRect(maskX + maskW * 0.12, maskY + maskH * 0.18, maskW * 0.2, maskH * 0.2);
 
-    // 레귤레이터 + 호스(마스크에서 탱크로 연결되는 포인트)
-    const regulatorX = maskX + maskW * 0.5 - w * 0.03;
-    const regulatorY = maskY + maskH * 0.82;
-    ctx.fillStyle = hose;
-    ctx.fillRect(regulatorX, regulatorY, w * 0.06, h * 0.03);
-    ctx.strokeStyle = hose;
-    ctx.lineWidth = Math.max(1, lineWidth * 0.8);
-    ctx.beginPath();
-    ctx.moveTo(regulatorX + w * 0.03, regulatorY + h * 0.01);
-    ctx.lineTo(tankX + tankW * 0.8, tankY + tankH * 0.25);
-    ctx.stroke();
+    if (isPrini) {
+      // 프린이는 레귤레이터 + 호스로 기존 실루엣 유지
+      const regulatorX = maskX + maskW * 0.5 - w * 0.03;
+      const regulatorY = maskY + maskH * 0.82;
+      ctx.fillStyle = hose;
+      ctx.fillRect(regulatorX, regulatorY, w * 0.06, h * 0.03);
+      ctx.strokeStyle = hose;
+      ctx.lineWidth = Math.max(1, lineWidth * 0.8);
+      ctx.beginPath();
+      ctx.moveTo(regulatorX + w * 0.03, regulatorY + h * 0.01);
+      ctx.lineTo(tankAnchorX, tankAnchorY);
+      ctx.stroke();
+    } else {
+      // 고고다이버는 노즈클립 라인으로 프리다이버 장비 느낌만 최소 반영
+      const clipW = w * 0.1;
+      const clipH = h * 0.026;
+      const clipX = faceCX - clipW * 0.5;
+      const clipY = faceCY - h * 0.02;
+      ctx.fillStyle = suitAccent;
+      ctx.fillRect(clipX, clipY, clipW, clipH);
+      ctx.strokeStyle = suitAccent;
+      ctx.lineWidth = Math.max(1, lineWidth * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(clipX + clipW * 0.5, clipY + clipH);
+      ctx.lineTo(torsoX + torsoW * 0.5, torsoY + torsoH * 0.4);
+      ctx.stroke();
+    }
 
     // 외곽선은 기본 라인 두께로 복원해 선명도 유지
     ctx.lineWidth = lineWidth;
@@ -995,18 +1027,6 @@
     ctx.fillRect(x + w * 0.66, y + h * 0.4, w * 0.16, h * 0.6);
     ctx.fillRect(x + w * 0.12, y + h * 0.32, w * 0.2, h * 0.18);
     ctx.fillRect(x + w * 0.68, y + h * 0.28, w * 0.2, h * 0.18);
-  }
-
-  // 해초 장애물 렌더링
-  function drawSeaweed(ctx, x, y, w, h) {
-    ctx.fillStyle = "#2fa37a";
-    const stalkWidth = w * 0.12;
-
-    for (let i = 0; i < 3; i += 1) {
-      const offsetX = x + w * 0.25 + i * stalkWidth * 1.6;
-      ctx.fillRect(offsetX, y + h * 0.18, stalkWidth, h * 0.82);
-      ctx.fillRect(offsetX - stalkWidth * 0.2, y + h * 0.05, stalkWidth * 0.8, h * 0.2);
-    }
   }
 
   // 해파리 장애물 렌더링
@@ -1156,10 +1176,6 @@
         drawCoral(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
       }
 
-      if (obstacle.type === "seaweed") {
-        drawSeaweed(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
-      }
-
       if (obstacle.type === "jellyfish") {
         drawJellyfish(ctx, obstacle.x, screenY, obstacle.width, obstacle.height);
       }
@@ -1219,7 +1235,6 @@
     const shrinkMap = {
       rock: 0.18,
       coral: 0.2,
-      seaweed: 0.28,
       jellyfish: 0.22,
       shark: 0.2,
       ray: 0.2,
