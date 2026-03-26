@@ -1,6 +1,45 @@
 (() => {
   "use strict";
 
+  const ScoreSync = window.DiveGameScoreSync || {
+    EXPO_CLOSED_CODE: "EXPO_CLOSED",
+    EXPO_CLOSED_STATUS_MESSAGE: "운영 시간 외에는 랭킹 저장이 불가합니다.",
+    createScoreRequestError(status, payload) {
+      const error = new Error(payload?.message || "score request failed");
+      error.name = "ScoreRequestError";
+      error.status = status;
+      error.code = payload?.code || "SCORE_REQUEST_FAILED";
+      error.payload = payload || null;
+      return error;
+    },
+    isExpoClosedError(error) {
+      return error?.code === "EXPO_CLOSED";
+    },
+  };
+  const LeaderboardNotice = window.DiveGameLeaderboardNotice || {
+    TOP_RANK_STAFF_TOAST_MESSAGE: "현재까지 1등입니다. 현장 스태프에게 직접 인증해 주세요. (미인증시 무효)",
+    isCurrentPlayerTopRank(entries, lastScore) {
+      if (!entries?.[0] || !lastScore) {
+        return false;
+      }
+
+      return (
+        entries[0].name === lastScore.name &&
+        Math.abs(Number(entries[0].depth) - Number(lastScore.depth)) < 0.05
+      );
+    },
+    isSameScoreEntry(entry, lastScore) {
+      if (!entry || !lastScore) {
+        return false;
+      }
+
+      return (
+        entry.name === lastScore.name &&
+        Math.abs(Number(entry.depth) - Number(lastScore.depth)) < 0.05
+      );
+    },
+  };
+
   // DOM element cache for fast access
   const DOM = {
     screens: {
@@ -135,6 +174,8 @@
     moving: false,
     // 목숨 감소 알림 타이머(중복 노출 제어)
     lifeLossTimerId: 0,
+    // 동일 결과 화면에서 1등 토스트 중복 노출 방지
+    topRankToastShown: false,
   };
 
   // Input flags for continuous movement
@@ -484,6 +525,15 @@
   }
 
   // Send a score payload to the server API
+  async function parseJsonResponse(response) {
+    try {
+      return await response.json();
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // 점수 저장 실패도 JSON 본문을 읽어 운영 시간 외 오류를 구분한다.
   async function sendScore(record) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 5000);
@@ -496,11 +546,13 @@
         signal: controller.signal,
       });
 
+      const payload = await parseJsonResponse(response);
+
       if (!response.ok) {
-        throw new Error("score request failed");
+        throw ScoreSync.createScoreRequestError(response.status, payload);
       }
 
-      return await response.json();
+      return payload || { ok: true };
     } finally {
       window.clearTimeout(timeoutId);
     }
@@ -517,25 +569,35 @@
   // Flush pending scores sequentially to preserve order
   async function flushQueue() {
     if (state.queueSending) {
-      return false;
+      return { stored: false, reason: "QUEUE_BUSY" };
     }
 
     state.queueSending = true;
     const queue = loadQueue();
     const remaining = [];
+    let reason = "SAVED";
 
-    for (const record of queue) {
+    for (let index = 0; index < queue.length; index += 1) {
+      const record = queue[index];
+
       try {
         await sendScore(record);
       } catch (error) {
-        remaining.push(record);
+        if (ScoreSync.isExpoClosedError(error)) {
+          // 운영 시간 외에는 재전송하지 않고 현재 큐를 즉시 폐기한다.
+          reason = ScoreSync.EXPO_CLOSED_CODE;
+          break;
+        }
+
+        reason = "PENDING";
+        remaining.push(record, ...queue.slice(index + 1));
         break;
       }
     }
 
     saveQueue(remaining);
     state.queueSending = false;
-    return remaining.length === 0;
+    return { stored: reason === "SAVED", reason };
   }
 
   // Fetch leaderboard from server
@@ -581,11 +643,7 @@
       item.appendChild(depth);
 
       // Highlight current player if name + depth matches
-      if (
-        state.lastScore &&
-        entry.name === state.lastScore.name &&
-        Math.abs(Number(entry.depth) - state.lastScore.depth) < 0.05
-      ) {
+      if (LeaderboardNotice.isSameScoreEntry(entry, state.lastScore)) {
         item.classList.add("is-highlight");
       }
 
@@ -1679,6 +1737,7 @@
       name: state.player.name,
       depth: Number(depth.toFixed(2)),
     };
+    state.topRankToastShown = false;
 
     setActiveScreen("result");
     DOM.finalDepth.textContent = formatDepth(depth);
@@ -1705,25 +1764,44 @@
       character: getCharacterStorageKey(state.character),
     };
 
+    let leaderboardStatusText = "업데이트 완료";
+    let canShowTopRankToast = false;
+
     try {
-      const stored = await enqueueScore(record);
-      if (!stored) {
+      const flushResult = await enqueueScore(record);
+      if (flushResult.reason === ScoreSync.EXPO_CLOSED_CODE) {
+        leaderboardStatusText = ScoreSync.EXPO_CLOSED_STATUS_MESSAGE;
+        DOM.leaderboardStatus.textContent = leaderboardStatusText;
+      } else if (!flushResult.stored) {
+        leaderboardStatusText = "저장 대기 중...";
         DOM.leaderboardStatus.textContent = "저장 대기 중...";
         showToast("네트워크 불안정: 관계자에게 직접 보여주세요.");
       } else {
+        leaderboardStatusText = "업데이트 완료";
         DOM.leaderboardStatus.textContent = "랭킹 불러오는 중...";
+        canShowTopRankToast = true;
       }
     } catch (error) {
       // 저장 오류 발생 시 현장 안내 메시지 표시
-      DOM.leaderboardStatus.textContent = "기록 저장 오류: 관계자에게 직접 보여주세요.";
+      leaderboardStatusText = "기록 저장 오류: 관계자에게 직접 보여주세요.";
+      DOM.leaderboardStatus.textContent = leaderboardStatusText;
       showToast("네트워크 불안정: 관계자에게 직접 보여주세요.");
     }
 
     // Load leaderboard from server
     try {
       const result = await fetchLeaderboard(10);
-      renderLeaderboard(result.data || []);
-      DOM.leaderboardStatus.textContent = "업데이트 완료";
+      const entries = result.data || [];
+      renderLeaderboard(entries);
+      DOM.leaderboardStatus.textContent = leaderboardStatusText;
+      if (
+        canShowTopRankToast &&
+        !state.topRankToastShown &&
+        LeaderboardNotice.isCurrentPlayerTopRank(entries, state.lastScore)
+      ) {
+        showToast(LeaderboardNotice.TOP_RANK_STAFF_TOAST_MESSAGE);
+        state.topRankToastShown = true;
+      }
     } catch (error) {
       DOM.leaderboardStatus.textContent = "랭킹 불러오기 실패";
       renderLeaderboard([]);

@@ -1,5 +1,6 @@
 // Netlify Function: store score to PostgreSQL
 const { Client } = require("pg");
+const { createExpoClosedResponseBody, isScoreSubmissionOpenAt } = require("./score-policy");
 
 // Build CORS headers based on optional allowed origin
 function buildCorsHeaders() {
@@ -103,6 +104,10 @@ exports.handler = async (event) => {
   const validation = validatePayload(parsed.data);
   if (validation.error) {
     return { statusCode: 400, headers, body: JSON.stringify({ ok: false, message: validation.error }) };
+  }
+
+  if (!isScoreSubmissionOpenAt(new Date(), validation.data.name)) {
+    return { statusCode: 403, headers, body: JSON.stringify(createExpoClosedResponseBody()) };
   }
 
   const clientResult = createClient();
