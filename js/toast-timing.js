@@ -9,7 +9,7 @@
   "use strict";
 
   const DEFAULT_TOAST_DURATION_MS = 2200;
-  const TOP_RANK_TOAST_DURATION_MS = 5000;
+  const TOP_RANK_TOAST_DURATION_MS = 10000;
 
   function resolveToastDuration(options = {}) {
     const durationMs = Number(options?.durationMs);
