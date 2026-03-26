@@ -21,11 +21,13 @@
     <td align="center"><strong>1. 운영 부스 전경</strong></td>
     <td align="center"><strong>2. 현장 굿즈/소품</strong></td>
     <td align="center"><strong>3. 이벤트 안내 보드</strong></td>
+    <td align="center"><strong>4. 현장 플레이 모습</strong></td>
   </tr>
   <tr>
-    <td align="center"><img src="img/img_1.jpeg" alt="박람회 운영 부스 전경" width="300"></td>
-    <td align="center"><img src="img/img_6.jpeg" alt="박람회 현장 굿즈와 소품" width="300"></td>
-    <td align="center"><img src="img/img_7.jpeg" alt="박람회 이벤트 안내 보드" width="300"></td>
+    <td align="center"><img src="img/img_1.jpeg" alt="박람회 운영 부스 전경" width="220"></td>
+    <td align="center"><img src="img/img_6.jpeg" alt="박람회 현장 굿즈와 소품" width="220"></td>
+    <td align="center"><img src="img/img_7.jpeg" alt="박람회 이벤트 안내 보드" width="220"></td>
+    <td align="center"><img src="img/img_8.jpeg" alt="박람회 현장 방문객 플레이 모습" width="220"></td>
   </tr>
 </table>
 
