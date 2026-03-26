@@ -39,6 +39,19 @@
       );
     },
   };
+  const ResultActionGuard = window.DiveGameResultActionGuard || {
+    RESULT_ACTION_GUARD_MS: 250,
+    createResultActionUnlockAt(nowMs) {
+      return Number(nowMs) + 250;
+    },
+    shouldBlockResultAction(unlockAt, nowMs) {
+      if (!Number.isFinite(Number(unlockAt)) || Number(unlockAt) <= 0) {
+        return false;
+      }
+
+      return Number(nowMs) < Number(unlockAt);
+    },
+  };
 
   // DOM element cache for fast access
   const DOM = {
@@ -176,6 +189,8 @@
     lifeLossTimerId: 0,
     // 동일 결과 화면에서 1등 토스트 중복 노출 방지
     topRankToastShown: false,
+    // 게임 오버 직후 결과 버튼 클릭 관통 방지 시각
+    resultActionUnlockAt: 0,
   };
 
   // Input flags for continuous movement
@@ -220,6 +235,24 @@
     window.setTimeout(() => DOM.toast.classList.remove("is-visible"), 2200);
   }
 
+  function getNowMs() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+
+    return Date.now();
+  }
+
+  // 화면 전환 전 입력을 즉시 비워 잔여 이동/클릭 상태를 제거한다.
+  function resetInputState() {
+    input.left = false;
+    input.right = false;
+  }
+
+  function isResultActionBlocked() {
+    return ResultActionGuard.shouldBlockResultAction(state.resultActionUnlockAt, getNowMs());
+  }
+
   // Switch visible screen by id
   function setActiveScreen(screenId) {
     Object.entries(DOM.screens).forEach(([key, section]) => {
@@ -230,6 +263,7 @@
     document.body.classList.toggle("body-dark", isDarkScreen);
     // 게임 화면이 아니면 시작 오버레이를 숨김 처리
     if (screenId !== "game") {
+      resetInputState();
       DOM.gameStartOverlay.classList.remove("is-visible");
       DOM.touchControls?.classList.remove("is-disabled");
       // 게임 화면 이탈 시 피격 알림 잔상 제거
@@ -1714,6 +1748,7 @@
       depth: Number(depth.toFixed(2)),
     };
     state.topRankToastShown = false;
+    state.resultActionUnlockAt = ResultActionGuard.createResultActionUnlockAt(getNowMs());
 
     setActiveScreen("result");
     DOM.finalDepth.textContent = formatDepth(depth);
@@ -1786,6 +1821,7 @@
 
   // Start a new game session from UI state
   function startGame() {
+    state.resultActionUnlockAt = 0;
     if (DOM.hudCharacter) {
       // 레거시 HUD가 있을 경우만 캐릭터 라벨 갱신
       DOM.hudCharacter.textContent = getCharacterLabel(state.character);
@@ -1820,6 +1856,7 @@
     state.character = null;
     state.facing = 1;
     state.moving = false;
+    state.resultActionUnlockAt = 0;
     DOM.btnToGame.disabled = true;
     // Reset character selection UI state
     DOM.characterCards.forEach((card) => {
@@ -1885,10 +1922,16 @@
     });
 
     DOM.btnRetry.addEventListener("click", () => {
+      if (isResultActionBlocked()) {
+        return;
+      }
       setActiveScreen("character");
     });
 
     DOM.btnHome.addEventListener("click", () => {
+      if (isResultActionBlocked()) {
+        return;
+      }
       resetToIntro();
     });
 
