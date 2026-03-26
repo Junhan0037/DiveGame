@@ -195,6 +195,16 @@
     })(),
   };
 
+  // 포션 전용 렌더러는 전역 헬퍼로 분리해 테스트 가능하게 유지한다.
+  const renderPotion =
+    window.DiveGamePotionRenderer?.createPotionRenderer?.() ||
+    function fallbackPotionRenderer(ctx, x, y, w, h) {
+      ctx.fillStyle = "rgba(214, 245, 255, 0.24)";
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.5, y + h * 0.55, w * 0.28, h * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
   // Return safe numeric range for physics values
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -1281,43 +1291,9 @@
     ctx.fill();
   }
 
-  // 보라색 회복 포션 렌더링(후광 포함)
+  // 파란 슬러시 컵 형태의 회복 포션 렌더링
   function drawPotion(ctx, x, y, w, h) {
-    const cx = x + w * 0.5;
-    const cy = y + h * 0.56;
-    const glowRadius = Math.max(w, h) * 0.72;
-
-    // 뒤쪽 글로우로 시인성 확보
-    const glow = ctx.createRadialGradient(cx, cy, glowRadius * 0.18, cx, cy, glowRadius);
-    glow.addColorStop(0, "rgba(237, 178, 255, 0.72)");
-    glow.addColorStop(0.55, "rgba(169, 78, 255, 0.32)");
-    glow.addColorStop(1, "rgba(130, 45, 214, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 병 본체
-    ctx.fillStyle = "#7d3ed1";
-    ctx.beginPath();
-    ctx.moveTo(x + w * 0.2, y + h * 0.34);
-    ctx.lineTo(x + w * 0.8, y + h * 0.34);
-    ctx.lineTo(x + w * 0.72, y + h * 0.9);
-    ctx.lineTo(x + w * 0.28, y + h * 0.9);
-    ctx.closePath();
-    ctx.fill();
-
-    // 병 목 부분/마개
-    ctx.fillStyle = "#a073f2";
-    ctx.fillRect(x + w * 0.38, y + h * 0.2, w * 0.24, h * 0.14);
-    ctx.fillStyle = "#e8d6ff";
-    ctx.fillRect(x + w * 0.34, y + h * 0.12, w * 0.32, h * 0.08);
-
-    // 액체 하이라이트
-    ctx.fillStyle = "rgba(236, 217, 255, 0.7)";
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.42, y + h * 0.58, w * 0.1, h * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    renderPotion(ctx, x, y, w, h);
   }
 
   // 월드 좌표를 화면 좌표로 변환해 장애물 렌더링

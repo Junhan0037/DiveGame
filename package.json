@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Dive game with Netlify Functions and PostgreSQL",
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": "18.x"
   },
