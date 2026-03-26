@@ -8,7 +8,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   "use strict";
 
-  const TOP_RANK_STAFF_TOAST_MESSAGE = "1등입니다. 현장 스태프에게 직접 인증해 주세요.";
+  const TOP_RANK_STAFF_TOAST_MESSAGE = "현재까지 1등입니다. 현장 스태프에게 직접 인증해 주세요. (미인증시 무효)";
   const SCORE_MATCH_TOLERANCE = 0.05;
 
   // 결과 화면 하이라이트와 동일한 기준으로 같은 기록인지 판정한다.

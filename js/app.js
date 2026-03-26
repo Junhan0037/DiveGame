@@ -52,6 +52,25 @@
       return Number(nowMs) < Number(unlockAt);
     },
   };
+  const ToastTiming = window.DiveGameToastTiming || {
+    DEFAULT_TOAST_DURATION_MS: 2200,
+    TOP_RANK_TOAST_DURATION_MS: 5000,
+    resolveToastDuration(options = {}) {
+      const durationMs = Number(options?.durationMs);
+      if (!Number.isFinite(durationMs) || durationMs <= 0) {
+        return 2200;
+      }
+
+      return durationMs;
+    },
+    replaceToastTimer({ previousTimerId = 0, options, timerApi = window, onHide }) {
+      if (previousTimerId) {
+        timerApi.clearTimeout(previousTimerId);
+      }
+
+      return timerApi.setTimeout(onHide, this.resolveToastDuration(options));
+    },
+  };
 
   // DOM element cache for fast access
   const DOM = {
@@ -191,6 +210,8 @@
     topRankToastShown: false,
     // 게임 오버 직후 결과 버튼 클릭 관통 방지 시각
     resultActionUnlockAt: 0,
+    // 공통 토스트 hide 타이머 ID
+    toastTimerId: 0,
   };
 
   // Input flags for continuous movement
@@ -226,13 +247,22 @@
   }
 
   // Provide a short-lived toast message for feedback
-  function showToast(message) {
+  function showToast(message, options = {}) {
     if (!message) {
       return;
     }
+
     DOM.toast.textContent = message;
     DOM.toast.classList.add("is-visible");
-    window.setTimeout(() => DOM.toast.classList.remove("is-visible"), 2200);
+    state.toastTimerId = ToastTiming.replaceToastTimer({
+      previousTimerId: state.toastTimerId,
+      options,
+      timerApi: window,
+      onHide() {
+        DOM.toast.classList.remove("is-visible");
+        state.toastTimerId = 0;
+      },
+    });
   }
 
   function getNowMs() {
@@ -1810,7 +1840,9 @@
         !state.topRankToastShown &&
         LeaderboardNotice.isCurrentPlayerTopRank(entries, state.lastScore)
       ) {
-        showToast(LeaderboardNotice.TOP_RANK_STAFF_TOAST_MESSAGE);
+        showToast(LeaderboardNotice.TOP_RANK_STAFF_TOAST_MESSAGE, {
+          durationMs: ToastTiming.TOP_RANK_TOAST_DURATION_MS,
+        });
         state.topRankToastShown = true;
       }
     } catch (error) {
