@@ -71,6 +71,42 @@
       return timerApi.setTimeout(onHide, this.resolveToastDuration(options));
     },
   };
+  const TouchControls = window.DiveGameTouchControls || {
+    // 보조 스크립트가 없더라도 기존 조작은 유지되게 폴백한다.
+    bindHoldButton(button, direction, activate) {
+      if (!button || typeof activate !== "function") {
+        return null;
+      }
+
+      const onDown = (event) => {
+        if (event?.cancelable) {
+          event.preventDefault();
+        }
+        activate(direction, true);
+      };
+      const onUp = () => {
+        activate(direction, false);
+      };
+      const suppressNativeUi = (event) => {
+        if (event?.cancelable) {
+          event.preventDefault();
+        }
+      };
+
+      button.addEventListener("pointerdown", onDown);
+      button.addEventListener("pointerup", onUp);
+      button.addEventListener("pointerleave", onUp);
+      button.addEventListener("pointercancel", onUp);
+      button.addEventListener("contextmenu", suppressNativeUi);
+      button.addEventListener("dragstart", suppressNativeUi);
+
+      return {
+        onDown,
+        onUp,
+        suppressNativeUi,
+      };
+    },
+  };
 
   // DOM element cache for fast access
   const DOM = {
@@ -1749,25 +1785,9 @@
       }
     });
 
-    // Touch button controls
-    // Bind pointer events for a control button
-    const bindButton = (button, direction) => {
-      // Activate movement while pointer is held
-      const onDown = (event) => {
-        event.preventDefault();
-        activate(direction, true);
-      };
-      // Release movement on pointer end
-      const onUp = () => activate(direction, false);
-
-      button.addEventListener("pointerdown", onDown);
-      button.addEventListener("pointerup", onUp);
-      button.addEventListener("pointerleave", onUp);
-      button.addEventListener("pointercancel", onUp);
-    };
-
-    bindButton(DOM.btnLeft, "left");
-    bindButton(DOM.btnRight, "right");
+    // 모바일 길게 누르기 중 네이티브 드래그/컨텍스트 UI를 차단한다.
+    TouchControls.bindHoldButton(DOM.btnLeft, "left", activate);
+    TouchControls.bindHoldButton(DOM.btnRight, "right", activate);
   }
 
   // Handle game over UI and server sync
